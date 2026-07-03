@@ -1,0 +1,91 @@
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { UserLayout, AdminLayout } from '@/components/layout';
+import { ToastViewport } from '@/components/ui';
+
+// 사용자 페이지
+import { Home } from '@/pages/user/Home';
+import LoginPage from '@/pages/user/LoginPage';
+import SignupPage from '@/pages/user/SignupPage';
+import ProductListPage from '@/pages/user/ProductListPage';
+import ProductDetailPage from '@/pages/user/ProductDetailPage';
+import CartPage from '@/pages/user/CartPage';
+import CheckoutPage from '@/pages/user/CheckoutPage';
+import MyPage from '@/pages/user/MyPage';
+import { OrderList } from '@/pages/user/OrderList';
+import { OrderDetail } from '@/pages/user/OrderDetail';
+import CouponBoxPage from '@/pages/user/CouponBox';
+import DeliveryBookPage from '@/pages/user/DeliveryBookPage';
+import EventList from '@/pages/user/EventList';
+import { EventDetail } from '@/pages/user/EventDetail';
+import NoticeListPage from '@/pages/user/Notice';
+import QnaListPage from '@/pages/user/QnaList';
+import { QnaNew } from '@/pages/user/QnaNew';
+
+// 관리자 페이지
+import AdminLoginPage from '@/pages/admin/AdminLoginPage';
+import AdminDashboard from '@/pages/admin/Dashboard';
+import AdminProductsPage from '@/pages/admin/AdminProducts';
+import { AdminProductNew } from '@/pages/admin/AdminProductNew';
+import { AdminProductEdit } from '@/pages/admin/AdminProductEdit';
+import { AdminCategories } from '@/pages/admin/AdminCategories';
+import AdminOrdersPage from '@/pages/admin/AdminOrders';
+import { AdminOrderDetail } from '@/pages/admin/AdminOrderDetail';
+import AdminCouponsPage from '@/pages/admin/AdminCoupons';
+import { AdminCouponBoards } from '@/pages/admin/AdminCouponBoards';
+import AdminMembersPage from '@/pages/admin/AdminMembers';
+import { AdminMemberDetail } from '@/pages/admin/AdminMemberDetail';
+import AdminQnaPage from '@/pages/admin/AdminQna';
+
+import { NotFound } from '@/pages/NotFound';
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* 인증 (레이아웃 없음) */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/admin/login" element={<AdminLoginPage />} />
+
+        {/* 사용자 */}
+        <Route element={<UserLayout />}>
+          <Route path="/" element={<Home />} />
+          <Route path="/products" element={<ProductListPage />} />
+          <Route path="/products/:productId" element={<ProductDetailPage />} />
+          <Route path="/cart" element={<CartPage />} />
+          <Route path="/checkout" element={<CheckoutPage />} />
+          <Route path="/mypage" element={<MyPage />} />
+          <Route path="/mypage/orders" element={<OrderList />} />
+          <Route path="/mypage/orders/:id" element={<OrderDetail />} />
+          <Route path="/mypage/coupons" element={<CouponBoxPage />} />
+          <Route path="/mypage/delivery" element={<DeliveryBookPage />} />
+          <Route path="/event" element={<EventList />} />
+          <Route path="/event/:id" element={<EventDetail />} />
+          <Route path="/cs/notice" element={<NoticeListPage />} />
+          <Route path="/cs/qna" element={<QnaListPage />} />
+          <Route path="/cs/qna/new" element={<QnaNew />} />
+        </Route>
+
+        {/* 관리자 */}
+        <Route element={<AdminLayout />}>
+          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin/products" element={<AdminProductsPage />} />
+          <Route path="/admin/products/new" element={<AdminProductNew />} />
+          <Route path="/admin/products/:id" element={<AdminProductEdit />} />
+          <Route path="/admin/categories" element={<AdminCategories />} />
+          <Route path="/admin/orders" element={<AdminOrdersPage />} />
+          <Route path="/admin/orders/:id" element={<AdminOrderDetail />} />
+          <Route path="/admin/coupons" element={<AdminCouponsPage />} />
+          <Route path="/admin/coupon-boards" element={<AdminCouponBoards />} />
+          <Route path="/admin/members" element={<AdminMembersPage />} />
+          <Route path="/admin/members/:id" element={<AdminMemberDetail />} />
+          <Route path="/admin/qna" element={<AdminQnaPage />} />
+        </Route>
+
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+
+      <ToastViewport />
+    </BrowserRouter>
+  );
+}

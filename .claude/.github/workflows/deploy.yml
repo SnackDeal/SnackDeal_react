@@ -1,0 +1,76 @@
+name: React Frontend Build and Deploy
+
+on:
+  pull_request:
+    branches:
+      - main
+      - dev
+    types:
+      - closed   # PR이 merge됐을 때만 작동
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push:
+    if: github.event.pull_request.merged == true
+    name: 도커 이미지 빌드 & 푸시
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Node.js 세팅
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' # 사용하는 Node.js 버전에 맞게 수정
+          cache: 'npm'
+
+      - name: 패키지 설치
+        run: npm ci
+
+      - name: React 빌드
+        run: npm run build
+        # env:
+        #   REACT_APP_API_URL: ${{ secrets.REACT_APP_API_URL }} # 환경변수가 필요하다면 여기서 주입
+
+      - name: GHCR 로그인
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 메타데이터 추출
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}
+          tags: |
+            type=sha
+            type=raw,value=latest
+
+      - name: 빌드 & 푸시 (Nginx 포함)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+
+  deploy:
+    name: EC2 배포
+    runs-on: self-hosted
+    needs: build-and-push
+
+    steps:
+      - name: GHCR 로그인
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: 프론트엔드 배포 실행
+        # 프론트엔드 전용 배포 스크립트 경로 지정
+        run: /home/ubuntu/snackdealFrontend/deployment.sh
