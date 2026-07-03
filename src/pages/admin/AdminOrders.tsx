@@ -100,7 +100,7 @@ export default function AdminOrdersPage() {
                     </td>
                     <td style={{ padding: '12px', textAlign: 'center' }}>
                       <button
-                        onClick={() => setSelectedId(order.id)}
+                        onClick={() => setSelectedId(order.id ?? null)}
                         style={{
                           padding: '6px 12px',
                           border: '1px solid #ccc',

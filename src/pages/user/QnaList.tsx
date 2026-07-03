@@ -12,7 +12,7 @@ const QNA_TYPES = [
 ];
 
 export default function QnaListPage() {
-  const { session } = useAuthStore();
+  const { member } = useAuthStore();
   const { getFAQs, getQNAs, addQNA } = useCSStore();
   const [tab, setTab] = useState<'faq' | 'qna'>('faq');
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -20,7 +20,7 @@ export default function QnaListPage() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const faqs = getFAQs();
-  const myQNAs = session ? getQNAs(Number(session.id)) : [];
+  const myQNAs = member ? getQNAs(Number(member.id)) : [];
 
   const handleSubmitQNA = () => {
     if (!form.title.trim() || !form.content.trim()) {
@@ -32,7 +32,7 @@ export default function QnaListPage() {
       title: form.title,
       content: form.content,
       is_answered: false,
-      member_id: Number(session?.id) || 0,
+      member_id: Number(member?.id) || 0,
     });
     setToast({ message: '문의가 등록되었습니다.', type: 'success' });
     setForm({ type: 'OTHER', title: '', content: '' });

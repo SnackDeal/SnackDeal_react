@@ -7,19 +7,19 @@ import { Toast } from '@/components/ui/Toast';
 
 export default function CartPage() {
   const navigate = useNavigate();
-  const { session } = useAuthStore();
+  const { member } = useAuthStore();
   const { items, updateQuantity, removeItem, removeItems, clearCart, getTotalPrice } = useCartStore();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
-    if (!session) {
+    if (!member) {
       setToast({ message: '로그인이 필요합니다.', type: 'error' });
       setTimeout(() => navigate('/login'), 2000);
     }
-  }, [session, navigate]);
+  }, [member, navigate]);
 
-  if (!session) {
+  if (!member) {
     return (
       <>
         <div style={{ padding: '40px', textAlign: 'center' }}>리디렉션중...</div>

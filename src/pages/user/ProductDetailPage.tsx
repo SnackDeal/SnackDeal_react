@@ -9,7 +9,7 @@ import { Toast } from '@/components/ui/Toast';
 export default function ProductDetailPage() {
   const navigate = useNavigate();
   const { productId } = useParams<{ productId: string }>();
-  const { selectedProduct, setSelectedProduct, isLoading, error, setLoading } = useProductStore();
+  const { selectedProduct, setSelectedProduct, isLoading, setLoading } = useProductStore();
   const { addItem } = useCartStore();
   const [quantity, setQuantity] = useState(1);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);

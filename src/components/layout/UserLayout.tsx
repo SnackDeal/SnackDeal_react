@@ -10,7 +10,7 @@ const navItems = [
 ];
 
 export function UserLayout() {
-  const cartCount = useCartStore((s) => s.count);
+  const cartCount = useCartStore((s) => s.getTotalItems());
 
   return (
     <div className="flex min-h-screen flex-col">

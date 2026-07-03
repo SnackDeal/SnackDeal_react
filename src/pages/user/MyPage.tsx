@@ -7,18 +7,18 @@ import { Button } from '@/components/ui/Button';
 
 export default function MyPage() {
   const navigate = useNavigate();
-  const { session, logout } = useAuthStore();
+  const { member, logout } = useAuthStore();
   const { orders } = useOrderStore();
   const { getUserCoupons } = useCouponStore();
   const [activeMenu, setActiveMenu] = useState<'overview' | 'orders' | 'coupons' | 'delivery'>('overview');
 
   useEffect(() => {
-    if (!session) {
+    if (!member) {
       navigate('/login');
     }
-  }, [session, navigate]);
+  }, [member, navigate]);
 
-  if (!session) {
+  if (!member) {
     return (
       <>
         <div style={{ padding: '40px', textAlign: 'center' }}>리디렉션중...</div>
@@ -40,7 +40,7 @@ export default function MyPage() {
           {/* Sidebar Menu */}
           <div>
             <div style={{ fontWeight: 'bold', marginBottom: '16px', fontSize: '14px' }}>
-              {session.member_name}님
+              {member.name}님
             </div>
 
             <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

@@ -12,7 +12,7 @@ const FREE_SHIPPING_THRESHOLD = 50000;
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
-  const { session } = useAuthStore();
+  const { member } = useAuthStore();
   const { items: cartItems, getTotalPrice, clearCart } = useCartStore();
   const { addresses, getDefaultAddress } = useDeliveryStore();
   const { addOrder } = useOrderStore();
@@ -31,7 +31,7 @@ export default function CheckoutPage() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
-    if (!session) {
+    if (!member) {
       setToast({ message: '로그인이 필요합니다.', type: 'error' });
       setTimeout(() => navigate('/login'), 2000);
     }
@@ -45,9 +45,9 @@ export default function CheckoutPage() {
     if (defaultAddr && addresses.length > 0) {
       setSelectedAddressId(defaultAddr.id);
     }
-  }, [session, cartItems.length, navigate, addresses, getDefaultAddress]);
+  }, [member, cartItems.length, navigate, addresses, getDefaultAddress]);
 
-  if (!session || cartItems.length === 0) {
+  if (!member || cartItems.length === 0) {
     return (
       <>
         <div style={{ padding: '40px', textAlign: 'center' }}>리디렉션중...</div>
