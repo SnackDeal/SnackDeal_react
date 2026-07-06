@@ -1,6 +1,8 @@
+import { loginWithGoogle } from '@/lib/api';
+
 export function GoogleLoginButton() {
   const handleClick = () => {
-    window.location.href = '/oauth2/authorization/google';
+    loginWithGoogle();
   };
 
   return (
