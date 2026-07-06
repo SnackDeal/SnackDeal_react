@@ -5,11 +5,13 @@ import { AuthShell } from '@/components/common/AuthShell';
 import { useAuthStore } from '@/stores/authStore';
 import { useToastStore } from '@/stores/toastStore';
 import { login, isEmail, type ApiError } from '@/lib/mockAuth';
+import { GoogleLoginButton } from '@/components/common/GoogleLoginButton';
+import { apiLogin, apiGetMe } from '@/lib/api';
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const setSession = useAuthStore((s) => s.setSession);
+  const { setSession, setSessionFromApi } = useAuthStore();
   const showToast = useToastStore((s) => s.show);
 
   const [email, setEmail] = useState('');
@@ -17,7 +19,6 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // 로그인 성공 후 이전 페이지 또는 메인으로 이동
   const from = (location.state as { from?: string })?.from ?? '/';
 
   async function onSubmit(e: FormEvent) {
@@ -33,12 +34,27 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
-      const result = await login(email, password);
-      setSession(result);
-      showToast(`${result.user.name}님 환영합니다.`, 'success');
+      // 백엔드 연동 시도
+      const tokens = await apiLogin(email, password);
+      const me = await apiGetMe(tokens.accessToken);
+      setSessionFromApi(tokens, me);
+      showToast(`${me.name}님 환영합니다.`, 'success');
       navigate(from, { replace: true });
-    } catch (err) {
-      setError((err as ApiError).message ?? '로그인에 실패했습니다.');
+    } catch (apiErr) {
+      const code = (apiErr as ApiError).code;
+      // 네트워크 에러면 mock fallback, 인증 실패면 에러 표시
+      if (code === 'NETWORK_ERROR') {
+        try {
+          const result = await login(email, password);
+          setSession(result);
+          showToast(`${result.user.name}님 환영합니다.`, 'success');
+          navigate(from, { replace: true });
+        } catch (mockErr) {
+          setError((mockErr as ApiError).message ?? '로그인에 실패했습니다.');
+        }
+      } else {
+        setError((apiErr as ApiError).message ?? '로그인에 실패했습니다.');
+      }
     } finally {
       setLoading(false);
     }
@@ -54,6 +70,7 @@ export default function LoginPage() {
           <Link to="/signup" className="font-medium text-brand-600 hover:underline">
             회원가입
           </Link>
+          <SocialLoginButtons />
         </>
       }
     >
@@ -86,5 +103,21 @@ export default function LoginPage() {
         데모 계정 · user@snackdeal.com (비밀번호는 아무 값이나 입력)
       </p>
     </AuthShell>
+  );
+}
+
+function SocialLoginButtons() {
+  return (
+    <div className="mt-6">
+      <div className="relative my-4">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-gray-300" />
+        </div>
+        <div className="relative flex justify-center text-sm">
+          <span className="bg-white px-2 text-gray-500">소셜 계정으로 계속하기</span>
+        </div>
+      </div>
+      <GoogleLoginButton />
+    </div>
   );
 }

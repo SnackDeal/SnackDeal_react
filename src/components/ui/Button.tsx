@@ -9,18 +9,22 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: Size;
 }
 
+// SEED 기반: primary=브랜드 오렌지 솔리드, secondary=neutral weak,
+// outline=neutral outline, ghost=투명, danger=critical
 const variants: Record<Variant, string> = {
-  primary: 'bg-brand-600 text-white hover:bg-brand-700',
-  secondary: 'bg-gray-100 text-gray-800 hover:bg-gray-200',
-  outline: 'border border-gray-300 text-gray-700 hover:bg-gray-50',
-  ghost: 'text-gray-600 hover:bg-gray-100',
-  danger: 'bg-red-600 text-white hover:bg-red-700',
+  primary: 'bg-brand-500 text-white hover:bg-brand-600 active:bg-brand-600',
+  secondary: 'bg-ink-100 text-ink-900 hover:bg-ink-200 active:bg-ink-200',
+  outline:
+    'border border-ink-300 bg-white text-ink-900 hover:bg-ink-50 active:bg-ink-50',
+  ghost: 'text-ink-600 hover:bg-ink-100 active:bg-ink-100',
+  danger: 'bg-critical text-white hover:opacity-90 active:opacity-90',
 };
 
+// SEED 스펙: lg 52 / md 40 / sm 36
 const sizes: Record<Size, string> = {
-  sm: 'h-8 px-3 text-sm',
+  sm: 'h-9 px-3 text-sm',
   md: 'h-10 px-4 text-sm',
-  lg: 'h-12 px-6 text-base',
+  lg: 'h-[52px] px-5 text-base font-bold',
 };
 
 export function Button({
@@ -32,9 +36,10 @@ export function Button({
   return (
     <button
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors',
-        'disabled:cursor-not-allowed disabled:opacity-50',
-        'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1',
+        'inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-all duration-150',
+        'disabled:cursor-not-allowed disabled:bg-ink-100 disabled:text-ink-400 disabled:border-transparent',
+        'focus:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-1',
+        'active:scale-[0.98]',
         variants[variant],
         sizes[size],
         className

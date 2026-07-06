@@ -1,7 +1,9 @@
-import { Link, NavLink, Outlet } from 'react-router-dom';
-import { ShoppingCart, User, Search } from 'lucide-react';
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { ShoppingCart, User, Search, LogOut } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { useCartStore } from '@/stores/cartStore';
+import { useAuthStore } from '@/stores/authStore';
+import { apiLogout } from '@/lib/api';
 
 const navItems = [
   { to: '/products', label: '상품' },
@@ -10,7 +12,17 @@ const navItems = [
 ];
 
 export function UserLayout() {
+  const navigate = useNavigate();
   const cartCount = useCartStore((s) => s.getTotalItems());
+  const { member, accessToken, logout } = useAuthStore();
+
+  const handleLogout = async () => {
+    if (accessToken) {
+      try { await apiLogout(accessToken); } catch { /* ignore */ }
+    }
+    logout();
+    navigate('/login', { replace: true });
+  };
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -62,6 +74,15 @@ export function UserLayout() {
             >
               <User size={20} />
             </Link>
+            {member && (
+              <button
+                onClick={handleLogout}
+                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+                aria-label="로그아웃"
+              >
+                <LogOut size={20} />
+              </button>
+            )}
           </div>
         </div>
       </header>

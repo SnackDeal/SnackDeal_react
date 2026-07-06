@@ -1,29 +1,25 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Check } from 'lucide-react';
-import { Button, Input, Select } from '@/components/ui';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Check, Gift } from 'lucide-react';
+import { Button, Input, Select, Modal } from '@/components/ui';
 import { AuthShell } from '@/components/common/AuthShell';
+import { GoogleLoginButton } from '@/components/common/GoogleLoginButton';
+import { BirthDateSelect } from '@/components/common/BirthDateSelect';
+import { PhoneNumberInput } from '@/components/common/PhoneNumberInput';
+import { formatPhoneNumberForStorage, isCompletePhoneNumber } from '@/lib/phone';
 import { useAuthStore } from '@/stores/authStore';
 import { useToastStore } from '@/stores/toastStore';
 import { useCountdown } from '@/lib/useCountdown';
-import {
-  sendCode,
-  verifyCode,
-  join,
-  isEmail,
-  isValidPassword,
-  type ApiError,
-  type JoinPayload,
-} from '@/lib/mockAuth';
+import { isEmail, isValidPassword } from '@/lib/mockAuth';
+import { apiSendCode, apiVerifyCode, apiJoin, apiLogin, type ApiError } from '@/lib/api';
 import type { Gender } from '@/types';
 import { cn } from '@/lib/cn';
 
 type Step = 1 | 2;
 
-/** 1단계에서 수집하는 회원 정보 */
-interface SignupInfo {
-  email: string;
-  password: string;
+/** 2단계에서 수집하는 회원 정보 */
+interface UserInfo {
+  password?: string;
   name: string;
   phone: string;
   birth: string;
@@ -32,64 +28,134 @@ interface SignupInfo {
 
 export default function SignupPage() {
   const navigate = useNavigate();
-  const setSession = useAuthStore((s) => s.setSession);
+  const [searchParams] = useSearchParams();
+  const { setSessionFromApi } = useAuthStore();
   const showToast = useToastStore((s) => s.show);
 
-  const [step, setStep] = useState<Step>(1);
-  const [info, setInfo] = useState<SignupInfo | null>(null);
+  // 구글 소셜 로그인 신규유저 케이스. OAuthCallback이 email/name과 함께 이 페이지로 보냄
+  const socialEmail = searchParams.get('email');
+  const socialName = searchParams.get('name');
+  const isSocialSignup = !!socialEmail;
+
+  const [step, setStep] = useState<Step>(isSocialSignup ? 2 : 1);
+  const [verification, setVerification] = useState<{ email: string; token: string } | null>(
+    isSocialSignup ? { email: socialEmail, token: '' } : null
+  );
+  const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+
+  const subtitle = isSocialSignup
+    ? `${socialName ?? ''}님, 환영합니다! 추가 정보를 입력해주세요.`
+    : '정보를 입력한 후 이메일 인증을 완료하세요';
 
   return (
     <AuthShell
       title="회원가입"
-      subtitle="정보를 입력한 후 이메일 인증을 완료하세요"
+      subtitle={subtitle}
       footer={
-        <>
-          이미 계정이 있으신가요?{' '}
-          <Link to="/login" className="font-medium text-brand-600 hover:underline">
-            로그인
-          </Link>
-        </>
+        !isSocialSignup && (
+          <>
+            이미 계정이 있으신가요?{' '}
+            <Link to="/login" className="font-medium text-brand-600 hover:underline">
+              로그인
+            </Link>
+            <SocialLoginButtons />
+          </>
+        )
       }
     >
-      <StepIndicator step={step} />
+      <StepIndicator step={step} isSocial={isSocialSignup} />
       {step === 1 ? (
-        <InfoStep
-          initial={info}
-          onNext={(data) => {
-            setInfo(data);
+        <EmailStep
+          onVerified={(email, verificationToken) => {
+            setVerification({ email, token: verificationToken });
             setStep(2);
           }}
         />
       ) : (
-        <EmailStep
-          email={info!.email}
-          onBack={() => setStep(1)}
-          onVerified={async (verificationToken) => {
-            const payload: JoinPayload = {
-              email: info!.email,
-              password: info!.password,
-              name: info!.name,
-              phone: info!.phone,
-              birth: info!.birth,
-              gender: info!.gender,
-              verification_token: verificationToken,
-            };
-            const result = await join(payload);
-            setSession(result);
-            showToast('회원가입이 완료되었습니다.', 'success');
-            navigate('/', { replace: true });
+        <InfoStep
+          email={verification!.email}
+          initialName={isSocialSignup ? socialName ?? '' : ''}
+          isSocial={isSocialSignup}
+          onBack={!isSocialSignup ? () => setStep(1) : undefined}
+          onJoin={async (userInfo) => {
+            if (isSocialSignup) {
+              try {
+                const { accessToken, refreshToken, ...me } = await apiJoin({
+                  ...userInfo,
+                  email: verification!.email,
+                  isSocialLogin: true,
+                });
+                if (!accessToken || !refreshToken) {
+                  throw { code: 'UNKNOWN', message: '로그인 세션을 받지 못했습니다.' } as ApiError;
+                }
+                setSessionFromApi({ accessToken, refreshToken }, me);
+                setIsSuccessModalOpen(true);
+              } catch (err) {
+                showToast((err as ApiError).message ?? '회원가입에 실패했습니다.', 'error');
+              }
+            } else {
+              try {
+                const joinPayload = {
+                  ...userInfo,
+                  password: userInfo.password!,
+                  email: verification!.email,
+                  verificationToken: verification!.token,
+                };
+
+                const { accessToken, refreshToken, ...me } = await apiJoin(joinPayload);
+                if (accessToken && refreshToken) {
+                  setSessionFromApi({ accessToken, refreshToken }, me);
+                } else {
+                  const tokens = await apiLogin(verification!.email, userInfo.password!);
+                  setSessionFromApi(tokens, me);
+                }
+                setIsSuccessModalOpen(true);
+              } catch (apiErr) {
+                if ((apiErr as ApiError).code !== 'NETWORK_ERROR') {
+                  setStep(1);
+                  setVerification(null);
+                }
+                throw apiErr;
+              }
+            }
           }}
         />
       )}
+      <Modal open={isSuccessModalOpen} onClose={() => navigate('/', { replace: true })}>
+        <div className="p-2 text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
+            <Gift className="h-6 w-6 text-green-600" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900">회원가입 완료!</h3>
+          <div className="mt-2 text-sm text-gray-500">
+            <p>SnackDeal 회원이 되신 것을 환영합니다.</p>
+            <p className="mt-1">
+              감사의 의미로{' '}
+              <strong className="font-semibold text-brand-600">신규회원 웰컴 쿠폰</strong>을
+              지급해드렸습니다.
+            </p>
+          </div>
+          <div className="mt-6">
+            <Button onClick={() => navigate('/', { replace: true })} className="w-full">
+              홈으로 가기
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </AuthShell>
   );
 }
 
-function StepIndicator({ step }: { step: Step }) {
-  const steps = [
-    { n: 1, label: '정보 입력' },
-    { n: 2, label: '이메일 인증' },
-  ];
+function StepIndicator({ step, isSocial }: { step: Step; isSocial: boolean }) {
+  const steps = isSocial
+    ? [
+        { n: 1, label: '소셜 로그인' },
+        { n: 2, label: '정보 입력' },
+      ]
+    : [
+        { n: 1, label: '이메일 인증' },
+        { n: 2, label: '정보 입력' },
+      ];
   return (
     <div className="mb-6 flex items-center gap-2">
       {steps.map((s, i) => (
@@ -117,46 +183,49 @@ function StepIndicator({ step }: { step: Step }) {
   );
 }
 
-/** 1단계: 이메일/비밀번호/이름/휴대폰/생년월일/성별 + 약관동의 */
+/** 2단계: 비밀번호/이름/휴대폰/생년월일/성별 + 약관동의 */
 function InfoStep({
-  initial,
-  onNext,
+  email,
+  initialName,
+  isSocial,
+  onBack,
+  onJoin,
 }: {
-  initial: SignupInfo | null;
-  onNext: (data: SignupInfo) => void;
+  email: string;
+  initialName: string;
+  isSocial: boolean;
+  onBack?: () => void;
+  onJoin: (data: UserInfo) => Promise<void>;
 }) {
-  const [email, setEmail] = useState(initial?.email ?? '');
-  const [password, setPassword] = useState(initial?.password ?? '');
-  const [passwordConfirm, setPasswordConfirm] = useState(initial?.password ?? '');
-  const [name, setName] = useState(initial?.name ?? '');
-  const [phone, setPhone] = useState(initial?.phone ?? '');
-  const [birth, setBirth] = useState(initial?.birth ?? '');
-  const [gender, setGender] = useState<Gender | ''>(initial?.gender ?? '');
+  const [password, setPassword] = useState('');
+  const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [name, setName] = useState(initialName);
+  const [phone, setPhone] = useState('');
+  const [birth, setBirth] = useState('');
+  const [gender, setGender] = useState<Gender | ''>('');
   const [agree, setAgree] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
-
-    if (!isEmail(email)) {
-      setError('이메일 형식이 올바르지 않습니다.');
-      return;
-    }
-    if (!isValidPassword(password)) {
-      setError('비밀번호는 8자 이상, 영문·숫자·특수문자를 포함해야 합니다.');
-      return;
-    }
-    if (password !== passwordConfirm) {
-      setError('비밀번호가 일치하지 않습니다.');
-      return;
+    if (!isSocial) {
+      if (!isValidPassword(password)) {
+        setError('비밀번호는 8자 이상, 영문·숫자·특수문자를 포함해야 합니다.');
+        return;
+      }
+      if (password !== passwordConfirm) {
+        setError('비밀번호가 일치하지 않습니다.');
+        return;
+      }
     }
     if (name.trim().length < 2 || name.trim().length > 20) {
       setError('이름은 2~20자로 입력해주세요.');
       return;
     }
-    if (!/^\d{10,11}$/.test(phone)) {
-      setError('휴대폰번호는 하이픈 없이 10~11자리 숫자로 입력해주세요.');
+    if (!isCompletePhoneNumber(phone)) {
+      setError('휴대폰번호를 앞자리, 가운데자리, 끝자리까지 모두 입력해주세요.');
       return;
     }
     if (!birth) {
@@ -172,60 +241,69 @@ function InfoStep({
       return;
     }
 
-    onNext({ email, password, name: name.trim(), phone, birth, gender });
+    setLoading(true);
+    try {
+      const userInfo: UserInfo = {
+        name: name.trim(),
+        phone: formatPhoneNumberForStorage(phone),
+        birth,
+        gender,
+      };
+      if (!isSocial) {
+        userInfo.password = password;
+      }
+      await onJoin(userInfo);
+    } catch (err) {
+      // onJoin에서 처리된 에러 외의 에러(네트워크 등)가 있다면 여기서 처리
+      if (!(err as ApiError).code) {
+        setError((err as Error).message || '알 수 없는 오류가 발생했습니다.');
+      }
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
-      <Input
-        id="email"
-        label="이메일"
-        type="email"
-        placeholder="you@example.com"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-      />
-      <Input
-        id="password"
-        label="비밀번호"
-        type="password"
-        placeholder="8자 이상, 영문·숫자·특수문자"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        autoComplete="new-password"
-      />
-      <Input
-        id="passwordConfirm"
-        label="비밀번호 확인"
-        type="password"
-        placeholder="비밀번호 재입력"
-        value={passwordConfirm}
-        onChange={(e) => setPasswordConfirm(e.target.value)}
-        autoComplete="new-password"
-      />
+      <Input id="email" label="이메일" type="email" value={email} disabled />
+      {!isSocial && (
+        <>
+          <Input
+            id="password"
+            label="비밀번호"
+            type="password"
+            placeholder="8자 이상, 영문·숫자·특수문자"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
+          />
+          <Input
+            id="passwordConfirm"
+            label="비밀번호 확인"
+            type="password"
+            placeholder="비밀번호 재입력"
+            value={passwordConfirm}
+            onChange={(e) => setPasswordConfirm(e.target.value)}
+            autoComplete="new-password"
+          />
+        </>
+      )}
       <Input
         id="name"
         label="이름"
         placeholder="이름 (2~20자)"
         value={name}
         onChange={(e) => setName(e.target.value)}
+        disabled={isSocial}
       />
-      <Input
-        id="phone"
-        label="휴대폰번호"
-        inputMode="numeric"
-        placeholder="하이픈 없이 (예: 01012345678)"
+      <PhoneNumberInput
         value={phone}
-        onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
-        maxLength={11}
+        onChange={setPhone}
       />
       <div className="flex gap-3">
-        <Input
-          id="birth"
-          label="생년월일"
-          type="date"
+        <BirthDateSelect
           value={birth}
-          onChange={(e) => setBirth(e.target.value)}
+          onChange={setBirth}
           className="flex-1"
         />
         <Select
@@ -257,26 +335,36 @@ function InfoStep({
 
       {error && <p className="text-sm text-red-500">{error}</p>}
 
-      <Button type="submit" size="lg" className="mt-2">
-        다음 — 이메일 인증
-      </Button>
+      <div className="mt-2 flex gap-2">
+        {onBack && (
+          <Button type="button" variant="outline" onClick={onBack} className="flex-1">
+            이전
+          </Button>
+        )}
+        <Button type="submit" size="lg" className={onBack ? 'flex-[2]' : 'w-full'} disabled={loading}>
+          {loading ? '가입 처리 중...' : '가입 완료'}
+        </Button>
+      </div>
     </form>
   );
 }
 
-/** 2단계: 인증코드 전송 → 검증 → 가입 완료 */
+/** 1단계: 이메일 입력 → 인증코드 전송 → 검증 */
 function EmailStep({
-  email,
-  onBack,
   onVerified,
 }: {
-  email: string;
-  onBack: () => void;
-  onVerified: (verificationToken: string) => Promise<void>;
+  onVerified: (email: string, verificationToken: string) => void;
 }) {
   const showToast = useToastStore((s) => s.show);
-  const { remaining, mmss, start, reset } = useDualCountdown();
+  // useCountdown 훅을 분리하여 재전송 타이머와 코드 만료 타이머를 독립적으로 관리
+  const {
+    remaining: resendRemaining,
+    start: startResend,
+    isRunning: isResendCooldown,
+  } = useCountdown();
+  const { remaining: codeRemaining, mmss: codeMMS, start: startCode } = useCountdown();
 
+  const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
@@ -285,14 +373,19 @@ function EmailStep({
   async function handleSend() {
     setError('');
     setLoading(true);
+    if (!isEmail(email)) {
+      setError('이메일 형식이 올바르지 않습니다.');
+      setLoading(false);
+      return;
+    }
     try {
-      const { expires_in } = await sendCode(email);
+      const res = await apiSendCode(email);
+      showToast('인증코드가 발송되었습니다.', 'success');
       setSent(true);
-      start.code(expires_in);
-      start.resend(60);
-      showToast('인증코드가 발송되었습니다. (콘솔 확인)', 'success');
+      startCode(res.expiresIn);
+      startResend(60);
     } catch (err) {
-      setError((err as ApiError).message);
+      setError((err as ApiError).message ?? '인증코드 발송에 실패했습니다.');
     } finally {
       setLoading(false);
     }
@@ -301,17 +394,16 @@ function EmailStep({
   async function handleVerify(e: FormEvent) {
     e.preventDefault();
     setError('');
-    if (remaining.code <= 0) {
+    if (codeRemaining <= 0 && sent) {
       setError('인증코드가 만료되었습니다. 재전송해주세요.');
       return;
     }
     setLoading(true);
     try {
-      const { verification_token } = await verifyCode(email, code);
-      reset();
-      await onVerified(verification_token);
+      const res = await apiVerifyCode(email, code);
+      onVerified(email, res.verificationToken);
     } catch (err) {
-      setError((err as ApiError).message);
+      setError((err as ApiError).message ?? '인증코드 확인에 실패했습니다.');
     } finally {
       setLoading(false);
     }
@@ -319,22 +411,32 @@ function EmailStep({
 
   return (
     <form onSubmit={handleVerify} className="flex flex-col gap-4">
-      <div className="rounded-lg bg-gray-50 px-3 py-2.5 text-sm text-gray-600">
-        <span className="font-medium text-gray-900">{email}</span> 로 인증코드를 전송합니다.
-      </div>
-
-      <Button
-        type="button"
-        variant="outline"
-        onClick={handleSend}
-        disabled={loading || remaining.resend > 0}
-      >
-        {remaining.resend > 0
-          ? `재전송 ${remaining.resend}s`
-          : sent
-            ? '인증코드 재전송'
+      <div className="relative">
+        <Input
+          id="email"
+          label="이메일"
+          type="email"
+          placeholder="you@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          disabled={loading || sent}
+          className="pr-36"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="absolute right-1 bottom-0.5 border-brand-200 bg-white text-brand-700 shadow-sm hover:border-brand-300 hover:bg-brand-50 disabled:border-ink-200 disabled:bg-ink-100 disabled:text-ink-400"
+          onClick={handleSend}
+          disabled={loading || isResendCooldown}
+        >
+          {isResendCooldown
+            ? `재전송 (${resendRemaining}s)`
+            : sent
+            ? '재전송'
             : '인증코드 전송'}
-      </Button>
+        </Button>
+      </div>
 
       {sent && (
         <div className="relative">
@@ -342,44 +444,39 @@ function EmailStep({
             id="code"
             label="인증코드"
             inputMode="numeric"
-            maxLength={6}
-            placeholder="6자리 숫자"
+            placeholder="이메일로 받은 6자리 숫자"
             value={code}
             onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+            maxLength={6}
+            disabled={loading}
           />
-          {remaining.code > 0 && (
-            <span className="absolute right-3 top-9 text-sm font-medium text-brand-600">
-              {mmss.code}
-            </span>
+          {codeRemaining > 0 && (
+            <span className="absolute right-3 bottom-2.5 text-sm text-gray-500">{codeMMS}</span>
           )}
         </div>
       )}
 
       {error && <p className="text-sm text-red-500">{error}</p>}
 
-      <div className="mt-2 flex gap-2">
-        <Button type="button" variant="outline" size="lg" onClick={onBack} className="shrink-0">
-          이전
-        </Button>
-        <Button type="submit" size="lg" disabled={!sent || loading} className="flex-1">
-          {loading ? '처리 중...' : '인증 확인 및 가입 완료'}
-        </Button>
-      </div>
+      <Button type="submit" size="lg" className="mt-2" disabled={!sent || loading}>
+        {loading ? '인증 중...' : '다음'}
+      </Button>
     </form>
   );
 }
 
-/** 인증코드 만료(5분) + 재전송 제한(60초) 두 카운트다운을 함께 관리 */
-function useDualCountdown() {
-  const codeCd = useCountdown();
-  const resendCd = useCountdown();
-  return {
-    remaining: { code: codeCd.remaining, resend: resendCd.remaining },
-    mmss: { code: codeCd.mmss },
-    start: { code: codeCd.start, resend: resendCd.start },
-    reset: () => {
-      codeCd.reset();
-      resendCd.reset();
-    },
-  };
+function SocialLoginButtons() {
+  return (
+    <div className="mt-6">
+      <div className="relative my-4">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-gray-300" />
+        </div>
+        <div className="relative flex justify-center text-sm">
+          <span className="bg-white px-2 text-gray-500">소셜 계정으로 계속하기</span>
+        </div>
+      </div>
+      <GoogleLoginButton />
+    </div>
+  );
 }

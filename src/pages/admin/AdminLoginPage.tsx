@@ -3,31 +3,40 @@ import { useNavigate } from 'react-router-dom';
 import { useAdminAuthStore } from '@/stores/adminAuthStore';
 import { Button } from '@/components/ui/Button';
 import { Toast } from '@/components/ui/Toast';
+import { apiAdminLogin, apiGetMe, type ApiError } from '@/lib/api';
 
 export default function AdminLoginPage() {
   const navigate = useNavigate();
-  const { adminSession, adminLogin } = useAdminAuthStore();
-  const [email, setEmail] = useState('admin@snackdeal.com');
+  const { adminSession, setAdminSession, setTokens } = useAdminAuthStore();
+  const [email, setEmail] = useState('admin@snackdeal.io');
   const [password, setPassword] = useState('admin1234');
+  const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
-    if (adminSession) {
-      navigate('/admin');
-    }
+    if (adminSession) navigate('/admin');
   }, [adminSession, navigate]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
       setToast({ message: '이메일과 비밀번호를 입력해주세요.', type: 'error' });
       return;
     }
-    if (adminLogin(email, password)) {
+    setLoading(true);
+    try {
+      const tokens = await apiAdminLogin(email, password);
+      const me = await apiGetMe(tokens.accessToken);
+      if (me.role !== 'ADMIN') throw { code: 'FORBIDDEN', message: '관리자 계정이 아닙니다.' } as ApiError;
+      setTokens(tokens);
+      setAdminSession({ id: me.id, email: me.email, name: me.name, role: 'ADMIN' });
       setToast({ message: '관리자 로그인 성공', type: 'success' });
-      setTimeout(() => navigate('/admin'), 1000);
-    } else {
-      setToast({ message: '이메일 또는 비밀번호가 맞지 않습니다.', type: 'error' });
+      setTimeout(() => navigate('/admin'), 800);
+    } catch (e) {
+      const ae = e as ApiError;
+      setToast({ message: ae.message ?? '이메일 또는 비밀번호가 맞지 않습니다.', type: 'error' });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -85,14 +94,14 @@ export default function AdminLoginPage() {
             />
           </div>
 
-          <Button type="submit" style={{ marginTop: '16px' }}>
-            로그인
+          <Button type="submit" style={{ marginTop: '16px' }} disabled={loading}>
+            {loading ? '로그인 중...' : '로그인'}
           </Button>
         </form>
 
         <div style={{ marginTop: '24px', padding: '16px', background: '#f9f9f9', borderRadius: '4px', fontSize: '12px', color: '#666' }}>
           <strong>테스트 계정:</strong>
-          <div>이메일: admin@snackdeal.com</div>
+          <div>이메일: admin@snackdeal.io</div>
           <div>비밀번호: admin1234</div>
         </div>
       </div>

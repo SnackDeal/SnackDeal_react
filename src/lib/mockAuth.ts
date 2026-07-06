@@ -1,5 +1,6 @@
 import type { Member, Gender } from '@/types';
 import { members } from '@/mocks/members';
+import { formatPhoneNumberForStorage } from '@/lib/phone';
 
 /**
  * Mock 인증 서비스 — 백엔드 없이 회원/인증 API 흐름을 흉내낸다.
@@ -100,7 +101,7 @@ export async function join(payload: JoinPayload): Promise<AuthResult> {
     id: Date.now(),
     email: payload.email.toLowerCase(),
     name: payload.name,
-    phone: payload.phone,
+    phone: formatPhoneNumberForStorage(payload.phone),
     birth: payload.birth,
     gender: payload.gender,
     status: 'ACTIVE',
