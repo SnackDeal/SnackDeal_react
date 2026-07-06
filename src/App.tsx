@@ -6,6 +6,8 @@ import { ToastViewport } from '@/components/ui';
 import { Home } from '@/pages/user/Home';
 import LoginPage from '@/pages/user/LoginPage';
 import SignupPage from '@/pages/user/SignupPage';
+import SignupCompletePage from '@/pages/user/SignupCompletePage';
+import OAuthCallback from '@/pages/user/OAuthCallback';
 import ProductListPage from '@/pages/user/ProductListPage';
 import ProductDetailPage from '@/pages/user/ProductDetailPage';
 import CartPage from '@/pages/user/CartPage';
@@ -40,11 +42,13 @@ import { NotFound } from '@/pages/NotFound';
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
         {/* 인증 (레이아웃 없음) */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
+        <Route path="/signup/complete" element={<SignupCompletePage />} />
+        <Route path="/oauth2/callback" element={<OAuthCallback />} />
         <Route path="/admin/login" element={<AdminLoginPage />} />
 
         {/* 사용자 */}

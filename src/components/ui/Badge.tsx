@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/cn';
 
-type Tone = 'gray' | 'blue' | 'green' | 'red' | 'yellow';
+type Tone = 'gray' | 'brand' | 'green' | 'red' | 'yellow';
 
 interface BadgeProps {
   children: ReactNode;
@@ -10,11 +10,11 @@ interface BadgeProps {
 }
 
 const tones: Record<Tone, string> = {
-  gray: 'bg-gray-100 text-gray-600',
-  blue: 'bg-brand-50 text-brand-700',
-  green: 'bg-green-50 text-green-700',
-  red: 'bg-red-50 text-red-600',
-  yellow: 'bg-yellow-50 text-yellow-700',
+  gray: 'bg-ink-100 text-ink-700',
+  brand: 'bg-brand-50 text-brand-700',
+  green: 'bg-emerald-50 text-emerald-700',
+  red: 'bg-red-50 text-critical',
+  yellow: 'bg-amber-50 text-amber-700',
 };
 
 export function Badge({ children, tone = 'gray', className }: BadgeProps) {
