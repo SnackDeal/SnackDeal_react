@@ -7,7 +7,24 @@
 // VITE_API_URL 이 설정되면 해당 주소로, 비어있으면 Vite 프록시(상대경로) 사용
 import { formatPhoneNumberForStorage } from '@/lib/phone';
 
-const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
+const configuredBaseUrl = ((import.meta.env.VITE_API_URL as string | undefined) ?? '').trim();
+
+const BASE_URL = (() => {
+  if (!configuredBaseUrl) return '';
+
+  if (
+    typeof window !== 'undefined' &&
+    window.location.protocol === 'https:' &&
+    configuredBaseUrl.startsWith('http://')
+  ) {
+    console.warn(
+      'VITE_API_URL uses http on an https page. Falling back to same-origin API proxy.'
+    );
+    return '';
+  }
+
+  return configuredBaseUrl.replace(/\/$/, '');
+})();
 
 // ─── 공통 ────────────────────────────────────────────────────────────────────
 
