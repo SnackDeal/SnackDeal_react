@@ -4,12 +4,14 @@ on:
   pull_request:
     branches:
       - main
+      - dev
     types:
       - closed
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ghcr.io/snackdeal/snackdeal_frontend
+  VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
 jobs:
   build-and-push:
@@ -58,6 +60,8 @@ jobs:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            VITE_API_URL=${{ env.VITE_API_URL }}
 
   deploy:
     name: EC2 배포
