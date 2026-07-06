@@ -32,5 +32,5 @@ export function useCountdown() {
     remaining % 60
   ).padStart(2, '0')}`;
 
-  return { remaining, mmss, start, reset: clear };
+  return { remaining, mmss, start, reset: clear, isRunning: remaining > 0 };
 }

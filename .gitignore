@@ -4,4 +4,8 @@ dist-ssr
 *.local
 .DS_Store
 .env
+!.env.example
 .claude/skills/run-snackdeal-frontend/shots/
+.claude
+docs
+

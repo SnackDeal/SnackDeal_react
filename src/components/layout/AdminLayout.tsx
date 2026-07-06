@@ -1,4 +1,4 @@
-import { Link, NavLink, Outlet } from 'react-router-dom';
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Package,
@@ -8,8 +8,11 @@ import {
   Megaphone,
   Users,
   MessageSquare,
+  LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { useAdminAuthStore } from '@/stores/adminAuthStore';
+import { apiAdminLogout } from '@/lib/api';
 
 const navItems = [
   { to: '/admin', label: '대시보드', icon: LayoutDashboard, end: true },
@@ -23,6 +26,17 @@ const navItems = [
 ];
 
 export function AdminLayout() {
+  const navigate = useNavigate();
+  const { accessToken, adminLogout } = useAdminAuthStore();
+
+  const handleLogout = async () => {
+    if (accessToken) {
+      try { await apiAdminLogout(accessToken); } catch { /* ignore */ }
+    }
+    adminLogout();
+    navigate('/admin/login', { replace: true });
+  };
+
   return (
     <div className="flex min-h-screen bg-gray-50">
       <aside className="fixed inset-y-0 left-0 flex w-60 flex-col border-r border-gray-200 bg-white">
@@ -54,6 +68,15 @@ export function AdminLayout() {
             );
           })}
         </nav>
+        <div className="border-t border-gray-200 px-3 py-3">
+          <button
+            onClick={handleLogout}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+          >
+            <LogOut size={18} />
+            로그아웃
+          </button>
+        </div>
       </aside>
 
       <div className="flex min-h-screen flex-1 flex-col pl-60">
