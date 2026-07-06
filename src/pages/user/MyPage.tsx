@@ -4,6 +4,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { useOrderStore } from '@/stores/orderStore';
 import { useCouponStore } from '@/stores/couponStore';
 import { Button } from '@/components/ui/Button';
+import { PhoneNumberInput } from '@/components/common/PhoneNumberInput';
+import { formatPhoneNumberForStorage, isCompletePhoneNumber } from '@/lib/phone';
 import { apiGetMe, apiUpdateMe, type MemberDescription, type ApiError } from '@/lib/api';
 
 export default function MyPage() {
@@ -248,7 +250,14 @@ function ProfileSection({
     setSuccess('');
 
     const payload: { phone?: string; currentPassword?: string; password?: string } = {};
-    if (phone && phone !== member?.phone) payload.phone = phone;
+    const formattedPhone = formatPhoneNumberForStorage(phone);
+    if (formattedPhone !== member?.phone) {
+      if (!isCompletePhoneNumber(formattedPhone)) {
+        setError('휴대폰번호를 앞자리, 가운데자리, 끝자리까지 모두 입력해주세요.');
+        return;
+      }
+      payload.phone = formattedPhone;
+    }
     if (newPassword) {
       if (!currentPassword) { setError('현재 비밀번호를 입력해주세요.'); return; }
       payload.currentPassword = currentPassword;
@@ -292,7 +301,7 @@ function ProfileSection({
       <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '16px', maxWidth: '480px' }}>
         {field('이메일', member.email, true)}
         {field('이름', member.name, true)}
-        {field('휴대폰번호', phone, false, (v) => setPhone(v.replace(/\D/g, '')))}
+        <PhoneNumberInput value={phone} onChange={setPhone} />
         <hr style={{ border: 'none', borderTop: '1px solid #eee' }} />
         {field('현재 비밀번호', currentPassword, false, setCurrentPassword, 'password')}
         {field('새 비밀번호', newPassword, false, setNewPassword, 'password')}

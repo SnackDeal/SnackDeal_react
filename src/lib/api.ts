@@ -5,6 +5,8 @@
  */
 
 // VITE_API_URL 이 설정되면 해당 주소로, 비어있으면 Vite 프록시(상대경로) 사용
+import { formatPhoneNumberForStorage } from '@/lib/phone';
+
 const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
 // ─── 공통 ────────────────────────────────────────────────────────────────────
@@ -100,7 +102,13 @@ export async function apiJoin(payload: {
   verificationToken?: string;
   isSocialLogin?: boolean;
 }): Promise<JoinResponse> {
-  return request('/member/join', { method: 'POST', body: JSON.stringify(payload) });
+  return request('/member/join', {
+    method: 'POST',
+    body: JSON.stringify({
+      ...payload,
+      phone: formatPhoneNumberForStorage(payload.phone),
+    }),
+  });
 }
 
 /** POST /member/login */
@@ -160,7 +168,17 @@ export async function apiUpdateMe(
   token: string,
   payload: { phone?: string; birth?: string; gender?: 'MALE' | 'FEMALE'; currentPassword?: string; password?: string }
 ): Promise<MemberDescription> {
-  return request('/member/me', { method: 'PATCH', body: JSON.stringify(payload) }, token);
+  return request(
+    '/member/me',
+    {
+      method: 'PATCH',
+      body: JSON.stringify({
+        ...payload,
+        ...(payload.phone ? { phone: formatPhoneNumberForStorage(payload.phone) } : {}),
+      }),
+    },
+    token
+  );
 }
 
 // ─── 관리자 로그인/메인 ───────────────────────────────────────────────────────

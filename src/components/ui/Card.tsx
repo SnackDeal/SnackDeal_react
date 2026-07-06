@@ -5,7 +5,7 @@ export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       className={cn(
-        'rounded-lg border border-gray-200 bg-white shadow-sm',
+        'rounded-xl border border-black/[0.06] bg-white shadow-s1',
         className
       )}
       {...props}
@@ -21,8 +21,8 @@ export function CardHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-      <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+    <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4">
+      <h3 className="text-base font-bold text-ink-900">{title}</h3>
       {action}
     </div>
   );

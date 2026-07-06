@@ -21,17 +21,20 @@ export function Table<T>({
   data,
   rowKey,
   onRowClick,
-  empty = '데이터가 없습니다.',
+  empty = '아직 표시할 항목이 없어요.',
 }: TableProps<T>) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-gray-200">
+    <div className="overflow-x-auto rounded-lg border border-ink-200">
       <table className="w-full border-collapse text-sm">
         <thead>
-          <tr className="border-b border-gray-200 bg-gray-50 text-left">
+          <tr className="border-b border-ink-200 bg-ink-50 text-left">
             {columns.map((col) => (
               <th
                 key={col.key}
-                className={cn('px-4 py-3 font-medium text-gray-500', col.className)}
+                className={cn(
+                  'px-4 py-3 font-semibold text-ink-600',
+                  col.className
+                )}
               >
                 {col.header}
               </th>
@@ -43,7 +46,7 @@ export function Table<T>({
             <tr>
               <td
                 colSpan={columns.length}
-                className="px-4 py-12 text-center text-gray-400"
+                className="px-4 py-12 text-center text-ink-500"
               >
                 {empty}
               </td>
@@ -54,12 +57,15 @@ export function Table<T>({
                 key={rowKey(row)}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
                 className={cn(
-                  'border-b border-gray-100 last:border-0',
-                  onRowClick && 'cursor-pointer hover:bg-gray-50'
+                  'border-b border-ink-100 last:border-0',
+                  onRowClick && 'cursor-pointer hover:bg-ink-50'
                 )}
               >
                 {columns.map((col) => (
-                  <td key={col.key} className={cn('px-4 py-3 text-gray-700', col.className)}>
+                  <td
+                    key={col.key}
+                    className={cn('px-4 py-3 text-ink-800', col.className)}
+                  >
                     {col.render(row)}
                   </td>
                 ))}

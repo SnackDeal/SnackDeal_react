@@ -4,6 +4,9 @@ import { Check, Gift } from 'lucide-react';
 import { Button, Input, Select, Modal } from '@/components/ui';
 import { AuthShell } from '@/components/common/AuthShell';
 import { GoogleLoginButton } from '@/components/common/GoogleLoginButton';
+import { BirthDateSelect } from '@/components/common/BirthDateSelect';
+import { PhoneNumberInput } from '@/components/common/PhoneNumberInput';
+import { formatPhoneNumberForStorage, isCompletePhoneNumber } from '@/lib/phone';
 import { useAuthStore } from '@/stores/authStore';
 import { useToastStore } from '@/stores/toastStore';
 import { useCountdown } from '@/lib/useCountdown';
@@ -221,8 +224,8 @@ function InfoStep({
       setError('이름은 2~20자로 입력해주세요.');
       return;
     }
-    if (!/^\d{10,11}$/.test(phone)) {
-      setError('휴대폰번호는 하이픈 없이 10~11자리 숫자로 입력해주세요.');
+    if (!isCompletePhoneNumber(phone)) {
+      setError('휴대폰번호를 앞자리, 가운데자리, 끝자리까지 모두 입력해주세요.');
       return;
     }
     if (!birth) {
@@ -240,7 +243,12 @@ function InfoStep({
 
     setLoading(true);
     try {
-      const userInfo: UserInfo = { name: name.trim(), phone, birth, gender };
+      const userInfo: UserInfo = {
+        name: name.trim(),
+        phone: formatPhoneNumberForStorage(phone),
+        birth,
+        gender,
+      };
       if (!isSocial) {
         userInfo.password = password;
       }
@@ -288,22 +296,14 @@ function InfoStep({
         onChange={(e) => setName(e.target.value)}
         disabled={isSocial}
       />
-      <Input
-        id="phone"
-        label="휴대폰번호"
-        inputMode="numeric"
-        placeholder="하이픈 없이 (예: 01012345678)"
+      <PhoneNumberInput
         value={phone}
-        onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
-        maxLength={11}
+        onChange={setPhone}
       />
       <div className="flex gap-3">
-        <Input
-          id="birth"
-          label="생년월일"
-          type="date"
+        <BirthDateSelect
           value={birth}
-          onChange={(e) => setBirth(e.target.value)}
+          onChange={setBirth}
           className="flex-1"
         />
         <Select
@@ -420,12 +420,13 @@ function EmailStep({
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           disabled={loading || sent}
+          className="pr-36"
         />
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
           size="sm"
-          className="absolute right-1 bottom-1"
+          className="absolute right-1 bottom-0.5 border-brand-200 bg-white text-brand-700 shadow-sm hover:border-brand-300 hover:bg-brand-50 disabled:border-ink-200 disabled:bg-ink-100 disabled:text-ink-400"
           onClick={handleSend}
           disabled={loading || isResendCooldown}
         >

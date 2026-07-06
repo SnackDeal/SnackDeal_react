@@ -2,6 +2,9 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Input, Select } from '@/components/ui';
 import { AuthShell } from '@/components/common/AuthShell';
+import { BirthDateSelect } from '@/components/common/BirthDateSelect';
+import { PhoneNumberInput } from '@/components/common/PhoneNumberInput';
+import { formatPhoneNumberForStorage, isCompletePhoneNumber } from '@/lib/phone';
 import { useAuthStore } from '@/stores/authStore';
 import { useToastStore } from '@/stores/toastStore';
 import { apiUpdateMe, type ApiError } from '@/lib/api';
@@ -26,8 +29,8 @@ export default function SignupCompletePage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
-    if (!/^\d{10,11}$/.test(phone)) {
-      setError('휴대폰번호는 하이픈 없이 10~11자리 숫자로 입력해주세요.');
+    if (!isCompletePhoneNumber(phone)) {
+      setError('휴대폰번호를 앞자리, 가운데자리, 끝자리까지 모두 입력해주세요.');
       return;
     }
     if (!birth) { setError('생년월일을 입력해주세요.'); return; }
@@ -35,7 +38,11 @@ export default function SignupCompletePage() {
 
     setLoading(true);
     try {
-      const updated = await apiUpdateMe(accessToken!, { phone, birth, gender: gender as 'MALE' | 'FEMALE' });
+      const updated = await apiUpdateMe(accessToken!, {
+        phone: formatPhoneNumberForStorage(phone),
+        birth,
+        gender: gender as 'MALE' | 'FEMALE',
+      });
       updateMember(updated);
       showToast('회원가입이 완료되었습니다.', 'success');
       navigate('/', { replace: true });
@@ -54,22 +61,14 @@ export default function SignupCompletePage() {
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
         <Input id="email" label="이메일" type="email" value={member.email} disabled />
         <Input id="name" label="이름" value={member.name} disabled />
-        <Input
-          id="phone"
-          label="휴대폰번호"
-          inputMode="numeric"
-          placeholder="하이픈 없이 (예: 01012345678)"
+        <PhoneNumberInput
           value={phone}
-          onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
-          maxLength={11}
+          onChange={setPhone}
         />
         <div className="flex gap-3">
-          <Input
-            id="birth"
-            label="생년월일"
-            type="date"
+          <BirthDateSelect
             value={birth}
-            onChange={(e) => setBirth(e.target.value)}
+            onChange={setBirth}
             className="flex-1"
           />
           <Select
