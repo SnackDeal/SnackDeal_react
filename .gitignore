@@ -7,5 +7,6 @@ dist-ssr
 !.env.example
 .claude/skills/run-snackdeal-frontend/shots/
 .claude
-docs
+/docs/
+DESIGN.md
 
