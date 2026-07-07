@@ -37,6 +37,7 @@ jobs:
       - name: React 빌드
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_CHATBOT_API_URL: ${{ secrets.VITE_CHATBOT_API_URL }}
         run: npm run build
 
       - name: GHCR 로그인
@@ -55,9 +56,10 @@ jobs:
             type=sha
             type=raw,value=latest
 
-      - name: VITE_API_URL secret 확인
+      - name: Vite API secrets 확인
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_CHATBOT_API_URL: ${{ secrets.VITE_CHATBOT_API_URL }}
         run: |
           if [ -z "$VITE_API_URL" ]; then
             echo "::error::VITE_API_URL secret이 비어있음. Settings → Secrets and variables → Actions 확인 필요"
@@ -67,7 +69,16 @@ jobs:
             echo "::error::VITE_API_URL must start with https://. Current value would cause mixed content."
             exit 1
           fi
+          if [ -z "$VITE_CHATBOT_API_URL" ]; then
+            echo "::error::VITE_CHATBOT_API_URL secret이 비어있음. Settings → Secrets and variables → Actions 확인 필요"
+            exit 1
+          fi
+          if [[ "$VITE_CHATBOT_API_URL" != https://* ]]; then
+            echo "::error::VITE_CHATBOT_API_URL must start with https://. Current value would cause mixed content."
+            exit 1
+          fi
           echo "VITE_API_URL length: ${#VITE_API_URL}"
+          echo "VITE_CHATBOT_API_URL length: ${#VITE_CHATBOT_API_URL}"
 
       - name: 빌드 & 푸시 (Nginx 포함)
         uses: docker/build-push-action@v5
@@ -77,6 +88,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
             VITE_API_URL=${{ secrets.VITE_API_URL }}
+            VITE_CHATBOT_API_URL=${{ secrets.VITE_CHATBOT_API_URL }}
 
   deploy:
     name: EC2 배포

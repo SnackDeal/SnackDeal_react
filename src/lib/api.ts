@@ -8,6 +8,7 @@
 import { formatPhoneNumberForStorage } from '@/lib/phone';
 
 const configuredBaseUrl = ((import.meta.env.VITE_API_URL as string | undefined) ?? '').trim();
+const configuredChatbotBaseUrl = ((import.meta.env.VITE_CHATBOT_API_URL as string | undefined) ?? '').trim();
 
 const BASE_URL = (() => {
   if (!configuredBaseUrl) return '';
@@ -24,6 +25,23 @@ const BASE_URL = (() => {
   }
 
   return configuredBaseUrl.replace(/\/$/, '');
+})();
+
+const CHATBOT_BASE_URL = (() => {
+  if (!configuredChatbotBaseUrl) return BASE_URL;
+
+  if (
+    typeof window !== 'undefined' &&
+    window.location.protocol === 'https:' &&
+    configuredChatbotBaseUrl.startsWith('http://')
+  ) {
+    console.warn(
+      'VITE_CHATBOT_API_URL uses http on an https page. Falling back to the default API base URL.'
+    );
+    return BASE_URL;
+  }
+
+  return configuredChatbotBaseUrl.replace(/\/$/, '');
 })();
 
 // ─── 공통 ────────────────────────────────────────────────────────────────────
@@ -64,7 +82,7 @@ async function request<T>(
   return body.data as T;
 }
 
-async function rawRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function chatbotRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
@@ -72,7 +90,32 @@ async function rawRequest<T>(path: string, options: RequestInit = {}): Promise<T
 
   let res: Response;
   try {
-    res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+    res = await fetch(`${CHATBOT_BASE_URL}${path}`, { ...options, headers });
+  } catch {
+    throw { code: 'NETWORK_ERROR', message: '서버에 연결할 수 없습니다.' } as ApiError;
+  }
+
+  const body = await res.json().catch(() => ({}));
+
+  if (!res.ok || body.success === false) {
+    throw {
+      code: body.code ?? 'UNKNOWN',
+      message: body.message ?? `요청에 실패했습니다. (${res.status})`,
+      status: res.status,
+    } as ApiError;
+  }
+  return body.data as T;
+}
+
+async function chatbotRawRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string>),
+  };
+
+  let res: Response;
+  try {
+    res = await fetch(`${CHATBOT_BASE_URL}${path}`, { ...options, headers });
   } catch {
     throw { code: 'NETWORK_ERROR', message: '서버에 연결할 수 없습니다.' } as ApiError;
   }
@@ -96,7 +139,7 @@ export interface ChatbotResponse {
 
 /** POST /chatbot/ask */
 export async function apiAskChatbot(message: string): Promise<ChatbotResponse> {
-  return request('/chatbot/ask', {
+  return chatbotRequest('/chatbot/ask', {
     method: 'POST',
     body: JSON.stringify({ message }),
   });
@@ -104,7 +147,7 @@ export async function apiAskChatbot(message: string): Promise<ChatbotResponse> {
 
 /** GET /health */
 export async function apiHealthCheck(): Promise<{ status: string }> {
-  return rawRequest('/health');
+  return chatbotRawRequest('/health');
 }
 
 // ─── 회원 ────────────────────────────────────────────────────────────────────
