@@ -73,8 +73,10 @@ export function AdminOrderDetail() {
         if (trackingNumber.trim()) opts.trackingNumber = trackingNumber.trim();
       }
       const res = await apiUpdateOrderStatus(accessToken, order.id, newStatus, opts);
-      setOrder((prev) => prev ? { ...prev, status: res.status, manualOverride: res.manualOverride } : prev);
-      setNewStatus(NEXT_STATUSES[res.status]?.[0] ?? res.status);
+      const fresh = await apiGetAdminOrderDetail(accessToken, order.id);
+      // PATCH 응답의 memo가 GET 응답에 아직 안 담긴 경우 대비하여 병합
+      setOrder({ ...fresh, memo: fresh.memo ?? res.memo ?? memoText ?? null });
+      setNewStatus(NEXT_STATUSES[fresh.status]?.[0] ?? fresh.status);
       const label = STATUS_LABELS[res.status] ?? res.status;
       setStatusSuccess(`${label}(으)로 변경되었습니다.${memoText ? ` 메모: ${memoText}` : ''}`);
       setMemo('');
@@ -93,12 +95,13 @@ export function AdminOrderDetail() {
     setRefundUpdating(true);
     setRefundError('');
     try {
-      const res = await apiAdminRefund(accessToken, order.id, {
+      await apiAdminRefund(accessToken, order.id, {
         approve,
         restoreStock: approve ? true : undefined,
         rejectReason: !approve ? rejectReason : undefined,
       });
-      setOrder((prev) => prev ? { ...prev, status: res.status } : prev);
+      const fresh = await apiGetAdminOrderDetail(accessToken, order.id);
+      setOrder(fresh);
       setRejectReason('');
     } catch (e) {
       setRefundError((e as ApiError).message ?? '환불 처리에 실패했습니다.');
@@ -153,6 +156,14 @@ export function AdminOrderDetail() {
           </div>
         </section>
       </div>
+
+      {/* 관리자 메모 */}
+      <section style={{ border: '1px solid #eee', borderRadius: '4px', padding: '16px', marginBottom: '24px', background: '#fafafa' }}>
+        <h3 style={{ fontWeight: '600', marginBottom: '8px', fontSize: '14px' }}>관리자 메모</h3>
+        <div style={{ fontSize: '13px', color: order.memo ? '#333' : '#999', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+          {order.memo || '저장된 메모가 없습니다.'}
+        </div>
+      </section>
 
       {/* 주문 상품 */}
       <section style={{ border: '1px solid #eee', borderRadius: '4px', padding: '16px', marginBottom: '24px' }}>

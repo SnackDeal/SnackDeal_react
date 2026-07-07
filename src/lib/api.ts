@@ -367,6 +367,7 @@ export interface AdminOrderDetail {
   cancelledAt: string | null;
   manualOverride: boolean;
   buyer: { id: number; email: string; name: string; totalOrderCount: number };
+  memo?: string | null;
   items: { productId: number; productName: string; price: number; quantity: number; lineTotal: number }[];
   shipping: {
     receiverName: string;
