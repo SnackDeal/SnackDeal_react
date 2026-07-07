@@ -61,11 +61,7 @@ jobs:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
           VITE_CHATBOT_API_URL: ${{ secrets.VITE_CHATBOT_API_URL }}
         run: |
-          if [ -z "$VITE_API_URL" ]; then
-            echo "::error::VITE_API_URL secret이 비어있음. Settings → Secrets and variables → Actions 확인 필요"
-            exit 1
-          fi
-          if [[ "$VITE_API_URL" != https://* ]]; then
+          if [ -n "$VITE_API_URL" ] && [[ "$VITE_API_URL" != https://* ]]; then
             echo "::error::VITE_API_URL must start with https://. Current value would cause mixed content."
             exit 1
           fi

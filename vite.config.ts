@@ -2,7 +2,7 @@ import { defineConfig, type ProxyOptions } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
 
-const BACKEND = process.env.VITE_PROXY_TARGET ?? 'https://snackdeal.mite88.site';
+const BACKEND = process.env.VITE_PROXY_TARGET ?? 'http://localhost:8080';
 
 /**
  * 백엔드 API 경로(`/admin`, `/member` 등)가 프론트 화면 경로(`/admin/login` 등)와 겹친다.
@@ -40,6 +40,8 @@ export default defineConfig({
       '/member': apiProxy(),
       '/admin': apiProxy(),
       '/order': apiProxy(),
+      '/product': apiProxy(),
+      '/shipping-policy': apiProxy(),
       '/chatbot': apiProxy(),
       '/health': apiProxy(),
       // 구글 OAuth2: 진입(/oauth2/authorization/google) + 콜백(/login/oauth2/code/google)

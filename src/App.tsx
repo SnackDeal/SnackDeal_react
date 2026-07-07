@@ -15,6 +15,7 @@ import CheckoutPage from '@/pages/user/CheckoutPage';
 import MyPage from '@/pages/user/MyPage';
 import { OrderList } from '@/pages/user/OrderList';
 import { OrderDetail } from '@/pages/user/OrderDetail';
+import OrderCompletePage from '@/pages/user/OrderCompletePage';
 import CouponBoxPage from '@/pages/user/CouponBox';
 import DeliveryBookPage from '@/pages/user/DeliveryBookPage';
 import EventList from '@/pages/user/EventList';
@@ -54,10 +55,12 @@ export default function App() {
         {/* 사용자 */}
         <Route element={<UserLayout />}>
           <Route path="/" element={<Home />} />
+          <Route path="/product" element={<ProductListPage />} />
           <Route path="/products" element={<ProductListPage />} />
           <Route path="/products/:productId" element={<ProductDetailPage />} />
           <Route path="/cart" element={<CartPage />} />
           <Route path="/checkout" element={<CheckoutPage />} />
+          <Route path="/order/complete" element={<OrderCompletePage />} />
           <Route path="/mypage" element={<MyPage />} />
           <Route path="/mypage/orders" element={<OrderList />} />
           <Route path="/mypage/orders/:id" element={<OrderDetail />} />

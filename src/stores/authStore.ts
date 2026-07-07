@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import type { Member } from '@/types';
 import type { AuthResult } from '@/lib/mockAuth';
 import type { MemberDescription } from '@/lib/api';
@@ -61,6 +61,6 @@ export const useAuthStore = create<AuthState>()(
           isAdmin: false,
         }),
     }),
-    { name: 'snackdeal-auth' }
+    { name: 'snackdeal-auth', storage: createJSONStorage(() => sessionStorage) }
   )
 );
