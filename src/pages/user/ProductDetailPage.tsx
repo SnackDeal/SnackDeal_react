@@ -2,9 +2,13 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useProductStore } from '@/stores/productStore';
 import { useCartStore } from '@/stores/cartStore';
-import { mockProductApi } from '@/lib/mockProducts';
+import { apiGetProduct, apiGetPublicShippingPolicy, type ShippingPolicy } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Toast } from '@/components/ui/Toast';
+
+function isRenderableImageUrl(url: string) {
+  return /^https?:\/\//.test(url);
+}
 
 export default function ProductDetailPage() {
   const navigate = useNavigate();
@@ -12,6 +16,7 @@ export default function ProductDetailPage() {
   const { selectedProduct, setSelectedProduct, isLoading, setLoading } = useProductStore();
   const { addItem } = useCartStore();
   const [quantity, setQuantity] = useState(1);
+  const [shippingPolicy, setShippingPolicy] = useState<ShippingPolicy | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
@@ -19,7 +24,7 @@ export default function ProductDetailPage() {
       if (!productId) return;
       setLoading(true);
       try {
-        const product = await mockProductApi.getProduct(Number(productId));
+        const product = await apiGetProduct(Number(productId));
         setSelectedProduct(product);
       } catch (err) {
         console.error('Failed to load product:', err);
@@ -32,6 +37,12 @@ export default function ProductDetailPage() {
 
     loadProduct();
   }, [productId, setSelectedProduct, setLoading, navigate]);
+
+  useEffect(() => {
+    apiGetPublicShippingPolicy()
+      .then(setShippingPolicy)
+      .catch(() => setShippingPolicy(null));
+  }, []);
 
   const handleAddToCart = () => {
     if (!selectedProduct) return;
@@ -50,15 +61,20 @@ export default function ProductDetailPage() {
 
   const handleBuyNow = () => {
     if (!selectedProduct) return;
-    addItem({
-      product_id: selectedProduct.id,
-      product_name: selectedProduct.name,
-      product_image: selectedProduct.image_url,
-      quantity,
-      price: selectedProduct.price,
-      max_stock: selectedProduct.stock,
-      is_soldout: selectedProduct.is_soldout,
-    });
+    sessionStorage.setItem(
+      'checkout-direct-items',
+      JSON.stringify([
+        {
+          product_id: selectedProduct.id,
+          product_name: selectedProduct.name,
+          product_image: selectedProduct.image_url,
+          quantity,
+          price: selectedProduct.price,
+          max_stock: selectedProduct.stock,
+          is_soldout: selectedProduct.is_soldout,
+        },
+      ])
+    );
     sessionStorage.setItem('checkout-product-ids', JSON.stringify([selectedProduct.id]));
     navigate('/checkout');
   };
@@ -83,6 +99,9 @@ export default function ProductDetailPage() {
 
   const maxQuantity = selectedProduct.stock;
   const totalPrice = selectedProduct.price * quantity;
+  const imageUrl = isRenderableImageUrl(selectedProduct.image_url)
+    ? selectedProduct.image_url
+    : '';
 
   return (
     <>
@@ -115,16 +134,34 @@ export default function ProductDetailPage() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px' }}>
           {/* Image */}
           <div style={{ position: 'relative' }}>
-            <img
-              src={selectedProduct.image_url}
-              alt={selectedProduct.name}
-              style={{
-                width: '100%',
-                height: 'auto',
-                borderRadius: '4px',
-                background: '#f5f5f5',
-              }}
-            />
+            {imageUrl ? (
+              <img
+                src={imageUrl}
+                alt={selectedProduct.name}
+                style={{
+                  width: '100%',
+                  aspectRatio: '1 / 1',
+                  objectFit: 'cover',
+                  borderRadius: '4px',
+                  background: '#f5f5f5',
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: '100%',
+                  aspectRatio: '1 / 1',
+                  borderRadius: '4px',
+                  background: '#f5f5f5',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#999',
+                }}
+              >
+                이미지 준비중
+              </div>
+            )}
             {selectedProduct.is_soldout && (
               <div
                 style={{
@@ -177,11 +214,6 @@ export default function ProductDetailPage() {
                 </div>
               </div>
 
-              {/* Description */}
-              <div style={{ marginBottom: '24px', color: '#666', lineHeight: '1.6' }}>
-                <h3 style={{ fontWeight: 'bold', marginBottom: '12px', color: '#333' }}>상품설명</h3>
-                <p>{selectedProduct.description}</p>
-              </div>
             </div>
 
             {/* Quantity & Purchase */}
@@ -283,26 +315,48 @@ export default function ProductDetailPage() {
         </div>
 
         {/* Info Sections */}
-        <div style={{ marginTop: '60px', borderTop: '1px solid #eee', paddingTop: '40px' }}>
-          <div style={{ marginBottom: '40px' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px' }}>배송정보</h3>
+        <div style={{ marginTop: '60px', borderTop: '1px solid #eee' }}>
+          <DetailSection title="상품설명">
+            <p style={{ color: '#666', lineHeight: '1.8', whiteSpace: 'pre-wrap' }}>
+              {selectedProduct.description || '등록된 상품 설명이 없습니다.'}
+            </p>
+          </DetailSection>
+
+          <DetailSection title="배송정보">
             <div style={{ color: '#666', lineHeight: '1.8' }}>
-              <p>• 배송료: 3,000원 (50,000원 이상 무료배송)</p>
+              {shippingPolicy ? (
+                <>
+                  <p>• 배송료: ₩{shippingPolicy.baseFee.toLocaleString()}</p>
+                  <p>
+                    • 무료배송 기준: ₩{shippingPolicy.freeThreshold.toLocaleString()} 이상 구매 시
+                  </p>
+                </>
+              ) : (
+                <p>• 배송비 정책을 불러오는 중입니다.</p>
+              )}
               <p>• 배송기간: 주문 후 1~2일 내 배송</p>
               <p>• 주말/공휴일 제외</p>
             </div>
-          </div>
+          </DetailSection>
 
-          <div style={{ marginBottom: '40px' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px' }}>교환/환불</h3>
+          <DetailSection title="교환/환불">
             <div style={{ color: '#666', lineHeight: '1.8' }}>
               <p>• 상품 수령 후 7일 이내 교환/환불 가능</p>
               <p>• 미개봉 상태의 상품에 한함</p>
-              <p>• 배송료는 고객 부담</p>
+              <p>• 단순 변심으로 인한 교환/환불 배송료는 고객 부담</p>
             </div>
-          </div>
+          </DetailSection>
         </div>
       </div>
     </>
+  );
+}
+
+function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section style={{ borderBottom: '1px solid #eee', padding: '32px 0' }}>
+      <h3 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px' }}>{title}</h3>
+      {children}
+    </section>
   );
 }

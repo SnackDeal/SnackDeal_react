@@ -1,25 +1,52 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
-import { useOrderStore } from '@/stores/orderStore';
 import { useCouponStore } from '@/stores/couponStore';
 import { Button } from '@/components/ui/Button';
 import { PhoneNumberInput } from '@/components/common/PhoneNumberInput';
 import { formatPhoneNumberForStorage, isCompletePhoneNumber } from '@/lib/phone';
-import { apiGetMe, apiUpdateMe, type MemberDescription, type ApiError } from '@/lib/api';
+import {
+  apiGetMe,
+  apiGetOrders,
+  apiUpdateMe,
+  type ApiError,
+  type MemberDescription,
+  type OrderSummary,
+} from '@/lib/api';
+
+const ORDER_STATUS_LABEL: Record<string, string> = {
+  PENDING_PAYMENT: '결제대기',
+  PAYMENT_COMPLETED: '결제완료',
+  PREPARING_SHIPMENT: '배송준비중',
+  SHIPPED: '배송중',
+  COMPLETED: '구매확정',
+  CANCELLED: '취소',
+  REFUND_REQUESTED: '환불요청',
+  REFUND_COMPLETED: '환불완료',
+};
 
 export default function MyPage() {
   const navigate = useNavigate();
   const { member, accessToken, updateMember, logout } = useAuthStore();
-  const { orders } = useOrderStore();
   const { getUserCoupons } = useCouponStore();
   const [activeMenu, setActiveMenu] = useState<'overview' | 'orders' | 'coupons' | 'delivery' | 'profile'>('overview');
+  const [orders, setOrders] = useState<OrderSummary[]>([]);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
 
   // 백엔드 연동 시 최신 내 정보 갱신
   useEffect(() => {
     if (!member) { navigate('/login'); return; }
     if (accessToken) {
       apiGetMe(accessToken).then(updateMember).catch(() => {});
+      apiGetOrders(accessToken, 0, 20)
+        .then((result) => {
+          setOrders(result.orders);
+          setOrdersError(null);
+        })
+        .catch((error: ApiError) => {
+          setOrders([]);
+          setOrdersError(error.message ?? '주문내역을 불러올 수 없습니다.');
+        });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -35,7 +62,7 @@ export default function MyPage() {
   const activeCoupons = getUserCoupons('ACTIVE');
   const usedCoupons = getUserCoupons('USED');
   const expiredCoupons = getUserCoupons('EXPIRED');
-  const totalOrderAmount = orders.reduce((sum, o) => sum + o.final_amount, 0);
+  const totalOrderAmount = orders.reduce((sum, o) => sum + o.finalAmount, 0);
   const totalOrderCount = orders.length;
 
   return (
@@ -110,27 +137,32 @@ export default function MyPage() {
                 <section>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                     <h3 style={{ fontSize: '16px', fontWeight: 'bold' }}>최근 주문 (5개)</h3>
-                    <button onClick={() => setActiveMenu('orders')}
+                    <button onClick={() => navigate('/mypage/orders')}
                       style={{ padding: '8px 12px', border: '1px solid #ccc', borderRadius: '4px', background: 'white', cursor: 'pointer', fontSize: '12px' }}>
                       더보기
                     </button>
                   </div>
                   {recentOrders.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>주문 내역이 없습니다.</div>
+                    <div style={{ textAlign: 'center', padding: '40px', color: ordersError ? '#dc2626' : '#666' }}>
+                      {ordersError ?? '주문 내역이 없습니다.'}
+                    </div>
                   ) : (
                     <div style={{ border: '1px solid #eee', borderRadius: '4px', overflow: 'hidden' }}>
                       {recentOrders.map((order, idx) => (
-                        <div key={order.id}
+                        <div key={order.orderId}
                           style={{ padding: '16px', borderBottom: idx < recentOrders.length - 1 ? '1px solid #eee' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-                          onClick={() => navigate(`/mypage/orders/${order.id}`)}>
+                          onClick={() => navigate(`/mypage/orders/${order.orderId}`)}>
                           <div>
-                            <div style={{ fontWeight: '600', marginBottom: '4px' }}>{order.order_number}</div>
-                            <div style={{ fontSize: '12px', color: '#666' }}>{new Date(order.shipping.address).toLocaleDateString()}</div>
+                            <div style={{ fontWeight: '600', marginBottom: '4px' }}>{order.orderNumber}</div>
+                            <div style={{ fontSize: '12px', color: '#666' }}>{formatDate(order.orderedAt)}</div>
+                            <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                              {order.mainProductName}{order.itemCount > 1 ? ` 외 ${order.itemCount - 1}건` : ''}
+                            </div>
                           </div>
                           <div style={{ textAlign: 'right' }}>
-                            <div style={{ fontWeight: '600', marginBottom: '4px' }}>₩{order.final_amount.toLocaleString()}</div>
+                            <div style={{ fontWeight: '600', marginBottom: '4px' }}>₩{order.finalAmount.toLocaleString()}</div>
                             <div style={{ fontSize: '11px', padding: '4px 8px', background: '#f0f0f0', borderRadius: '2px', width: 'fit-content', marginLeft: 'auto' }}>
-                              {order.status}
+                              {ORDER_STATUS_LABEL[order.status] ?? order.status}
                             </div>
                           </div>
                         </div>
@@ -145,21 +177,24 @@ export default function MyPage() {
             {activeMenu === 'orders' && (
               <div>
                 <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '24px' }}>주문내역</h2>
+                {ordersError && (
+                  <div style={{ marginBottom: '16px', color: '#dc2626', fontSize: '14px' }}>{ordersError}</div>
+                )}
                 {orders.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>주문 내역이 없습니다.</div>
                 ) : (
                   <div style={{ border: '1px solid #eee', borderRadius: '4px', overflow: 'hidden' }}>
                     {orders.map((order, idx) => (
-                      <div key={order.id}
+                      <div key={order.orderId}
                         style={{ padding: '16px', borderBottom: idx < orders.length - 1 ? '1px solid #eee' : 'none', cursor: 'pointer' }}
-                        onClick={() => navigate(`/mypage/orders/${order.id}`)}>
+                        onClick={() => navigate(`/mypage/orders/${order.orderId}`)}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                          <div style={{ fontWeight: '600' }}>{order.order_number}</div>
-                          <div style={{ color: '#666', fontSize: '14px' }}>{order.items.length}개 상품</div>
+                          <div style={{ fontWeight: '600' }}>{order.orderNumber}</div>
+                          <div style={{ color: '#666', fontSize: '14px' }}>{order.itemCount}개 상품</div>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', color: '#666', fontSize: '12px' }}>
-                          <div>{new Date(order.shipping.address).toLocaleDateString()}</div>
-                          <div>₩{order.final_amount.toLocaleString()}</div>
+                          <div>{formatDate(order.orderedAt)} · {order.mainProductName}</div>
+                          <div>₩{order.finalAmount.toLocaleString()}</div>
                         </div>
                       </div>
                     ))}
@@ -225,6 +260,12 @@ export default function MyPage() {
       </div>
     </>
   );
+}
+
+function formatDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
 }
 
 // ─── 내 정보 수정 섹션 ────────────────────────────────────────────────────────

@@ -11,7 +11,7 @@ interface ProductState {
   total: number;
   filters: {
     categoryId?: number;
-    sort: 'latest' | 'price_asc' | 'price_desc' | 'popular';
+    sort: 'latest' | 'price_asc' | 'price_desc' | 'stock_asc' | 'stock_desc' | 'popular';
     keyword: string;
   };
   setProducts: (products: Product[]) => void;

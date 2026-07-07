@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 export interface AdminSession {
   id: number;
@@ -45,6 +45,6 @@ export const useAdminAuthStore = create<AdminAuthState>()(
 
       adminLogout: () => set({ adminSession: null, accessToken: null, refreshToken: null }),
     }),
-    { name: 'admin-auth-storage' }
+    { name: 'admin-auth-storage', storage: createJSONStorage(() => sessionStorage) }
   )
 );

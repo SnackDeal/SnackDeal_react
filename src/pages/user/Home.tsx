@@ -1,28 +1,80 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Package, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { products, categories } from '@/mocks/products';
+import { apiGetProducts } from '@/lib/api';
 import { useCouponStore, type CouponBoard } from '@/stores/couponStore';
-import type { Product } from '@/types';
+import type { Product } from '@/lib/mockProducts';
 
 const TOP_LIMIT = 8;
 const PER_CATEGORY = 4;
+const PRODUCT_UPDATED_EVENT = 'snackdeal-products-updated';
+
+function isRenderableImageUrl(url: string) {
+  return /^https?:\/\//.test(url);
+}
 
 export function Home() {
-  const activeProducts = products.filter((p) => p.status === 'ACTIVE');
-  const topProducts = activeProducts.slice(0, TOP_LIMIT);
+  const [topProducts, setTopProducts] = useState<Product[]>([]);
+  const [categorySections, setCategorySections] = useState<Array<{ id: number; name: string; products: Product[] }>>([]);
+  const [refreshToken, setRefreshToken] = useState(0);
   const eventBoards = useCouponStore((s) => s.getCouponBoards()).filter(
     (b) => b.is_active
   );
+
+  useEffect(() => {
+    apiGetProducts({ sort: 'latest', page: 1, size: 50 })
+      .then((result) => {
+        const activeProducts = result.items.filter((product) => product.status === 'ACTIVE');
+        const grouped = new Map<number, { id: number; name: string; products: Product[] }>();
+
+        activeProducts.forEach((product) => {
+          const section = grouped.get(product.category_id) ?? {
+            id: product.category_id,
+            name: product.category,
+            products: [],
+          };
+          section.products.push(product);
+          grouped.set(product.category_id, section);
+        });
+
+        setTopProducts(activeProducts.slice(0, TOP_LIMIT));
+        setCategorySections(
+          Array.from(grouped.values()).map((section) => ({
+            ...section,
+            products: section.products.slice(0, PER_CATEGORY),
+          }))
+        );
+      })
+      .catch(() => {
+        setTopProducts([]);
+        setCategorySections([]);
+      });
+  }, [refreshToken]);
+
+  useEffect(() => {
+    const refresh = () => setRefreshToken((value) => value + 1);
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === PRODUCT_UPDATED_EVENT) refresh();
+    };
+
+    window.addEventListener(PRODUCT_UPDATED_EVENT, refresh);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener(PRODUCT_UPDATED_EVENT, refresh);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
 
   return (
     <div className="flex flex-col gap-14">
       <HeroBanner />
 
       <Section
-        title="지금 인기 있는 스낵"
-        subtitle="오늘 잘 나가는 상품만 골라봤어요"
+        title="새로 들어온 스낵"
+        subtitle="최근 등록된 상품을 먼저 보여드려요"
         moreTo="/products"
       >
         <ProductGrid products={topProducts} />
@@ -30,25 +82,19 @@ export function Home() {
 
       {eventBoards.length > 0 && <EventBanner boards={eventBoards} />}
 
-      {categories.map((category) => {
-        const items = activeProducts
-          .filter((p) => p.category_id === category.id)
-          .slice(0, PER_CATEGORY);
-
-        return (
-          <Section
-            key={category.id}
-            title={category.name}
-            moreTo={`/products?category_id=${category.id}`}
-          >
-            {items.length > 0 ? (
-              <ProductGrid products={items} />
-            ) : (
-              <EmptyCategory />
-            )}
-          </Section>
-        );
-      })}
+      {categorySections.map((category) => (
+        <Section
+          key={category.id}
+          title={category.name}
+          moreTo={`/products?categoryId=${category.id}`}
+        >
+          {category.products.length > 0 ? (
+            <ProductGrid products={category.products} />
+          ) : (
+            <EmptyCategory />
+          )}
+        </Section>
+      ))}
     </div>
   );
 }
@@ -135,8 +181,9 @@ function ProductGrid({ products }: { products: Product[] }) {
 }
 
 function ProductCard({ product }: { product: Product }) {
-  const isSoldOut = product.stock === 0;
-  const category = categories.find((c) => c.id === product.category_id);
+  const isSoldOut = product.stock === 0 || product.is_soldout;
+  const isLowStock = !isSoldOut && product.stock > 0 && product.stock < 10;
+  const imageUrl = isRenderableImageUrl(product.image_url) ? product.image_url : '';
 
   return (
     <Link
@@ -144,9 +191,9 @@ function ProductCard({ product }: { product: Product }) {
       className="group flex flex-col overflow-hidden rounded-xl border border-black/[0.06] bg-white shadow-s1 transition-all hover:shadow-s2 active:scale-[0.99]"
     >
       <div className="relative aspect-square bg-ink-100">
-        {product.image_url ? (
+        {imageUrl ? (
           <img
-            src={product.image_url}
+            src={imageUrl}
             alt={product.name}
             className="h-full w-full object-cover"
           />
@@ -155,18 +202,23 @@ function ProductCard({ product }: { product: Product }) {
             <Package size={36} strokeWidth={1.5} />
           </div>
         )}
+        <div className="absolute left-2.5 top-2.5 flex flex-wrap gap-1">
+          {isLowStock && (
+            <span className="rounded-full bg-red-500 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm">
+              임박 {product.stock}개
+            </span>
+          )}
+        </div>
         {isSoldOut && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-            <Badge tone="gray" className="bg-white/95 text-ink-900">
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-[1px]">
+            <span className="rounded-full bg-white/95 px-4 py-1.5 text-sm font-bold text-ink-900 shadow-md">
               품절
-            </Badge>
+            </span>
           </div>
         )}
       </div>
       <div className="flex flex-1 flex-col gap-1.5 p-3">
-        {category && (
-          <span className="text-xs text-ink-500">{category.name}</span>
-        )}
+        <span className="text-xs text-ink-500">{product.category}</span>
         <p className="line-clamp-1 text-sm font-medium text-ink-900 group-hover:text-brand-700">
           {product.name}
         </p>

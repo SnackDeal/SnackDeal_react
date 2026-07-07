@@ -3,19 +3,43 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useCartStore } from '@/stores/cartStore';
 import { useDeliveryStore } from '@/stores/deliveryStore';
-import { useOrderStore } from '@/stores/orderStore';
+import {
+  apiCompleteOrder,
+  apiGetMyCoupons,
+  apiPrepareOrder,
+  type MyCoupon,
+  type OrderPrepareResponse,
+} from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Toast } from '@/components/ui/Toast';
+import type { CartItem } from '@/stores/cartStore';
 
-const SHIPPING_FEE = 3000;
-const FREE_SHIPPING_THRESHOLD = 50000;
+declare global {
+  interface Window {
+    PortOne?: {
+      requestPayment: (params: {
+        storeId: string;
+        channelKey: string;
+        paymentId: string;
+        orderName: string;
+        totalAmount: number;
+        currency: string;
+        payMethod?: string;
+        customer?: {
+          fullName?: string;
+          email?: string;
+          phoneNumber?: string;
+        };
+      }) => Promise<{ code?: string; message?: string; paymentId?: string }>;
+    };
+  }
+}
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
-  const { member } = useAuthStore();
+  const { member, accessToken } = useAuthStore();
   const { items: cartItems, removeItems } = useCartStore();
   const { addresses, getDefaultAddress } = useDeliveryStore();
-  const { addOrder } = useOrderStore();
 
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
   const [useCustomAddress, setUseCustomAddress] = useState(false);
@@ -28,7 +52,10 @@ export default function CheckoutPage() {
   });
   const [deliveryRequest, setDeliveryRequest] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isPaymentCompleted, setIsPaymentCompleted] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [myCoupons, setMyCoupons] = useState<MyCoupon[]>([]);
+  const [selectedCouponId, setSelectedCouponId] = useState<number | null>(null);
   const checkoutProductIds = useMemo(() => {
     try {
       const raw = sessionStorage.getItem('checkout-product-ids');
@@ -38,9 +65,23 @@ export default function CheckoutPage() {
       return [];
     }
   }, []);
-  const checkoutItems = cartItems.filter((item) => checkoutProductIds.includes(item.product_id));
+  const directCheckoutItems = useMemo<CartItem[]>(() => {
+    try {
+      const raw = sessionStorage.getItem('checkout-direct-items');
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }, []);
+  const checkoutItems =
+    directCheckoutItems.length > 0
+      ? directCheckoutItems
+      : cartItems.filter((item) => checkoutProductIds.includes(item.product_id));
 
   useEffect(() => {
+    if (isPaymentCompleted) return;
+
     if (!member) {
       setToast({ message: '로그인이 필요합니다.', type: 'error' });
       setTimeout(() => navigate('/login'), 2000);
@@ -55,7 +96,14 @@ export default function CheckoutPage() {
     if (defaultAddr && addresses.length > 0) {
       setSelectedAddressId(defaultAddr.id);
     }
-  }, [member, checkoutItems.length, navigate, addresses, getDefaultAddress]);
+  }, [member, checkoutItems.length, navigate, addresses, getDefaultAddress, isPaymentCompleted]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    apiGetMyCoupons(accessToken)
+      .then((coupons) => setMyCoupons(coupons.filter((c) => c.status === 'ACTIVE')))
+      .catch(() => setMyCoupons([]));
+  }, [accessToken]);
 
   if (!member || checkoutItems.length === 0) {
     return (
@@ -66,8 +114,19 @@ export default function CheckoutPage() {
   }
 
   const productAmount = checkoutItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const shippingFee = productAmount >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
-  const finalAmount = productAmount + shippingFee;
+  const shippingFee = 0;
+  const selectedCoupon = myCoupons.find((c) => c.userCouponId === selectedCouponId) ?? null;
+  const now = new Date();
+  const isCouponUsable = (c: MyCoupon) =>
+    productAmount >= c.minOrderPrice && new Date(c.validUntil).getTime() >= now.getTime();
+  const discountAmount = (() => {
+    if (!selectedCoupon || !isCouponUsable(selectedCoupon)) return 0;
+    if (selectedCoupon.discountType === 'FIXED') {
+      return Math.min(selectedCoupon.discountValue, productAmount);
+    }
+    return Math.floor((productAmount * selectedCoupon.discountValue) / 100);
+  })();
+  const finalAmount = Math.max(0, productAmount + shippingFee - discountAmount);
 
   const selectedAddr = !useCustomAddress && selectedAddressId ? addresses.find((a) => a.id === selectedAddressId) : null;
 
@@ -77,6 +136,11 @@ export default function CheckoutPage() {
   };
 
   const handlePayment = async () => {
+    if (!accessToken) {
+      setToast({ message: '로그인이 필요합니다.', type: 'error' });
+      return;
+    }
+
     // Validate address
     if (useCustomAddress) {
       if (!customAddress.receiver_name.trim()) {
@@ -102,9 +166,7 @@ export default function CheckoutPage() {
 
     setIsProcessing(true);
 
-    // Mock payment
-    setTimeout(() => {
-      const orderNumber = `ORD-${Date.now()}`;
+    try {
       const shippingData = useCustomAddress
         ? customAddress
         : {
@@ -115,31 +177,44 @@ export default function CheckoutPage() {
             detail_address: selectedAddr!.detail_address,
           };
 
-      addOrder({
-        order_number: orderNumber,
-        product_amount: productAmount,
-        shipping_fee: shippingFee,
-        discount_amount: 0,
-        final_amount: finalAmount,
-        status: 'PAYMENT_COMPLETED',
+      const prepared = await apiPrepareOrder(accessToken, {
         items: checkoutItems.map((item) => ({
-          product_id: item.product_id,
-          product_name: item.product_name,
-          price: item.price,
+          productId: item.product_id,
           quantity: item.quantity,
         })),
         shipping: {
-          ...shippingData,
-          delivery_request: deliveryRequest,
+          receiverName: shippingData.receiver_name,
+          receiverPhone: shippingData.receiver_phone,
+          zipcode: shippingData.zipcode,
+          address: shippingData.address,
+          detailAddress: shippingData.detail_address,
+          deliveryRequest,
         },
+        userCouponId: selectedCoupon && isCouponUsable(selectedCoupon) ? selectedCoupon.userCouponId : undefined,
       });
 
-      removeItems(checkoutProductIds);
+      await requestPortOnePayment(prepared, getOrderName(checkoutItems));
+      const completed = await apiCompleteOrder(accessToken, prepared.paymentId);
+
+      setIsPaymentCompleted(true);
+      if (directCheckoutItems.length === 0) {
+        removeItems(checkoutProductIds);
+      }
       sessionStorage.removeItem('checkout-product-ids');
+      sessionStorage.removeItem('checkout-direct-items');
+      // 재고 갱신 알림 — 홈/상품목록/상세가 최신 재고를 다시 불러오도록
+      const stamp = String(Date.now());
+      localStorage.setItem('snackdeal-products-updated', stamp);
+      window.dispatchEvent(new Event('snackdeal-products-updated'));
+      navigate(`/order/complete?orderId=${completed.orderId}`, { replace: true });
+    } catch (error) {
+      setToast({
+        message: (error as { message?: string }).message ?? '결제 처리에 실패했습니다.',
+        type: 'error',
+      });
+    } finally {
       setIsProcessing(false);
-      setToast({ message: '주문이 완료되었습니다.', type: 'success' });
-      setTimeout(() => navigate('/mypage/orders'), 2000);
-    }, 1500);
+    }
   };
 
   return (
@@ -403,6 +478,45 @@ export default function CheckoutPage() {
               <h3 style={{ fontWeight: 'bold', marginBottom: '20px', fontSize: '16px' }}>결제 정보</h3>
 
               <div style={{ marginBottom: '20px' }}>
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 600 }}>
+                    쿠폰 사용
+                  </label>
+                  <select
+                    value={selectedCouponId ?? ''}
+                    onChange={(e) => setSelectedCouponId(e.target.value ? Number(e.target.value) : null)}
+                    disabled={myCoupons.length === 0}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      border: '1px solid #ccc',
+                      borderRadius: '4px',
+                      fontSize: '13px',
+                      background: myCoupons.length === 0 ? '#f5f5f5' : 'white',
+                    }}
+                  >
+                    <option value="">
+                      {myCoupons.length === 0 ? '사용 가능한 쿠폰이 없습니다' : '쿠폰을 선택하세요'}
+                    </option>
+                    {myCoupons.map((c) => {
+                      const usable = isCouponUsable(c);
+                      const suffix = usable
+                        ? ''
+                        : productAmount < c.minOrderPrice
+                          ? ` (최소 ₩${c.minOrderPrice.toLocaleString()})`
+                          : ' (기한만료)';
+                      const value =
+                        c.discountType === 'FIXED'
+                          ? `₩${c.discountValue.toLocaleString()} 할인`
+                          : `${c.discountValue}% 할인`;
+                      return (
+                        <option key={c.userCouponId} value={c.userCouponId} disabled={!usable}>
+                          {c.couponName} · {value}{suffix}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
                 <div
                   style={{
                     display: 'flex',
@@ -427,17 +541,18 @@ export default function CheckoutPage() {
                   <span>배송료</span>
                   <span>₩{shippingFee.toLocaleString()}</span>
                 </div>
-                {productAmount >= FREE_SHIPPING_THRESHOLD && (
+                {discountAmount > 0 && (
                   <div
                     style={{
                       display: 'flex',
                       justifyContent: 'space-between',
                       marginBottom: '12px',
-                      fontSize: '12px',
-                      color: '#27ae60',
+                      fontSize: '14px',
+                      color: '#c62828',
                     }}
                   >
-                    <span>무료배송 적용</span>
+                    <span>쿠폰 할인</span>
+                    <span>-₩{discountAmount.toLocaleString()}</span>
                   </div>
                 )}
               </div>
@@ -489,4 +604,35 @@ export default function CheckoutPage() {
       </div>
     </>
   );
+}
+
+function getOrderName(items: CartItem[]) {
+  if (items.length === 0) return 'SnackDeal 주문';
+  if (items.length === 1) return items[0].product_name;
+  return `${items[0].product_name} 외 ${items.length - 1}건`;
+}
+
+async function requestPortOnePayment(prepared: OrderPrepareResponse, orderName: string) {
+  if (!window.PortOne?.requestPayment) {
+    throw new Error('결제 SDK가 로드되지 않았습니다. PortOne SDK 설정을 확인해주세요.');
+  }
+
+  const payment = await window.PortOne.requestPayment({
+    storeId: prepared.storeId,
+    channelKey: prepared.channelKey,
+    paymentId: prepared.paymentId,
+    orderName,
+    totalAmount: prepared.amount,
+    currency: 'CURRENCY_KRW',
+    payMethod: 'CARD',
+    customer: {
+      fullName: prepared.buyerName,
+      email: prepared.buyerEmail,
+      phoneNumber: prepared.buyerTel,
+    },
+  });
+
+  if (payment?.code) {
+    throw new Error(payment.message ?? '결제가 취소되었거나 실패했습니다.');
+  }
 }
