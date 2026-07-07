@@ -16,7 +16,7 @@ import {
 import { cn } from '@/lib/cn';
 import { useCartStore } from '@/stores/cartStore';
 import { useAuthStore } from '@/stores/authStore';
-import { apiLogout } from '@/lib/api';
+import { apiAskChatbot, apiLogout } from '@/lib/api';
 
 const navItems = [
   { to: '/products', label: '상품' },
@@ -33,6 +33,12 @@ interface ChatMessage {
   content: string;
 }
 
+const CHATBOT_READY_MESSAGE =
+  '안녕하세요. SnackDeal AI 상담입니다. 주문, 배송, 상품, 쿠폰 관련 질문을 입력해주세요.';
+
+const CHATBOT_ERROR_MESSAGE =
+  '챗봇 응답을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.';
+
 export function UserLayout() {
   const navigate = useNavigate();
   const cartCount = useCartStore((s) => s.getTotalItems());
@@ -40,10 +46,11 @@ export function UserLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState('');
+  const [isChatSending, setIsChatSending] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       role: 'bot',
-      content: '안녕하세요. SnackDeal AI 상담입니다. 주문, 배송, 상품, 쿠폰 관련 질문을 입력해주세요.',
+      content: CHATBOT_READY_MESSAGE,
     },
   ]);
 
@@ -60,20 +67,32 @@ export function UserLayout() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleSubmitChat = (e: React.FormEvent) => {
+  const handleSubmitChat = async (e: React.FormEvent) => {
     e.preventDefault();
     const question = chatInput.trim();
-    if (!question) return;
+    if (!question || isChatSending) return;
 
     setChatMessages((messages) => [
       ...messages,
       { role: 'user', content: question },
-      {
-        role: 'bot',
-        content: '현재는 발표용 AI 상담 UI입니다. 실제 AI 답변 API가 연결되면 이 영역에 답변이 표시됩니다.',
-      },
     ]);
     setChatInput('');
+    setIsChatSending(true);
+
+    try {
+      const response = await apiAskChatbot(question);
+      setChatMessages((messages) => [
+        ...messages,
+        { role: 'bot', content: response.answer || '답변을 받지 못했습니다.' },
+      ]);
+    } catch {
+      setChatMessages((messages) => [
+        ...messages,
+        { role: 'bot', content: CHATBOT_ERROR_MESSAGE },
+      ]);
+    } finally {
+      setIsChatSending(false);
+    }
   };
 
   const mobileNavLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -313,7 +332,9 @@ export function UserLayout() {
               <Bot size={20} />
               <div>
                 <div className="text-sm font-bold">SnackDeal AI 상담</div>
-                <div className="text-xs text-white/80">발표용 챗봇 UI</div>
+                <div className="text-xs text-white/80">
+                  실시간 챗봇
+                </div>
               </div>
             </div>
             <button
@@ -354,11 +375,13 @@ export function UserLayout() {
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
               placeholder="질문을 입력하세요"
+              disabled={isChatSending}
               className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
             />
             <button
               type="submit"
-              className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500 text-white transition hover:bg-brand-600"
+              disabled={isChatSending}
+              className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500 text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-gray-300"
               aria-label="질문 보내기"
             >
               <Send size={18} />

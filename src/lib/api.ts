@@ -64,6 +64,49 @@ async function request<T>(
   return body.data as T;
 }
 
+async function rawRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string>),
+  };
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  } catch {
+    throw { code: 'NETWORK_ERROR', message: '서버에 연결할 수 없습니다.' } as ApiError;
+  }
+
+  const body = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw {
+      code: body.code ?? 'UNKNOWN',
+      message: body.message ?? `요청에 실패했습니다. (${res.status})`,
+      status: res.status,
+    } as ApiError;
+  }
+
+  return body as T;
+}
+
+export interface ChatbotResponse {
+  answer: string;
+}
+
+/** POST /chatbot/ask */
+export async function apiAskChatbot(message: string): Promise<ChatbotResponse> {
+  return request('/chatbot/ask', {
+    method: 'POST',
+    body: JSON.stringify({ message }),
+  });
+}
+
+/** GET /health */
+export async function apiHealthCheck(): Promise<{ status: string }> {
+  return rawRequest('/health');
+}
+
 // ─── 회원 ────────────────────────────────────────────────────────────────────
 
 export interface MemberDescription {
