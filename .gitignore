@@ -8,7 +8,7 @@ dist-ssr
 .claude/skills/run-snackdeal-frontend/shots/
 .claude
 docs
-DESIGN.md
-CLAUDE.md
-AGENTS.md
+/DESIGN.md
+/CLAUDE.md
+/AGENTS.md
 

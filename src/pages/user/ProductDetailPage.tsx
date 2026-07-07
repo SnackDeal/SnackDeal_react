@@ -59,6 +59,7 @@ export default function ProductDetailPage() {
       max_stock: selectedProduct.stock,
       is_soldout: selectedProduct.is_soldout,
     });
+    sessionStorage.setItem('checkout-product-ids', JSON.stringify([selectedProduct.id]));
     navigate('/checkout');
   };
 

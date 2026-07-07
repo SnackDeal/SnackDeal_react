@@ -57,7 +57,7 @@ async function request<T>(
   if (!res.ok || body.success === false) {
     throw {
       code: body.code ?? 'UNKNOWN',
-      message: body.message ?? '요청에 실패했습니다.',
+      message: body.message ?? `요청에 실패했습니다. (${res.status})`,
       status: res.status,
     } as ApiError;
   }
@@ -443,6 +443,72 @@ export async function apiAdminRefund(
 }
 
 // ─── 배송비 정책 ──────────────────────────────────────────────────────────────
+
+// ─── 관리자 카테고리 ───────────────────────────────────────────────────────────
+
+export interface AdminCategory {
+  id: number;
+  name: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminCategoryPayload {
+  name: string;
+  sortOrder?: number;
+}
+
+export interface AdminCategoryOrderPayload {
+  categoryOrders: {
+    categoryId: number;
+    sortOrder: number;
+  }[];
+}
+
+/** GET /admin/category */
+export async function apiGetAdminCategories(token: string): Promise<AdminCategory[]> {
+  return request('/admin/category', {}, token);
+}
+
+/** POST /admin/category */
+export async function apiCreateAdminCategory(
+  token: string,
+  payload: AdminCategoryPayload
+): Promise<AdminCategory | string> {
+  return request('/admin/category', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, token);
+}
+
+/** PUT /admin/category/{id} */
+export async function apiUpdateAdminCategory(
+  token: string,
+  id: number,
+  payload: AdminCategoryPayload
+): Promise<AdminCategory | string> {
+  return request(`/admin/category/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  }, token);
+}
+
+/** DELETE /admin/category/{id} */
+export async function apiDeleteAdminCategory(token: string, id: number): Promise<string> {
+  return request(`/admin/category/${id}`, { method: 'DELETE' }, token);
+}
+
+/** PATCH /admin/category/order */
+export async function apiUpdateAdminCategoryOrder(
+  token: string,
+  payload: AdminCategoryOrderPayload
+): Promise<string> {
+  return request('/admin/category/order', {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }, token);
+}
 
 export interface ShippingPolicy {
   baseFee: number;
