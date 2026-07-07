@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useDeliveryStore } from '@/stores/deliveryStore';
 import { Button } from '@/components/ui/Button';
 import { Toast } from '@/components/ui/Toast';
+import { openDaumPostcode } from '@/lib/daumPostcode';
+import { PhoneNumberInput } from '@/components/common/PhoneNumberInput';
 
 export default function DeliveryBookPage() {
   const { addresses, addAddress, updateAddress, deleteAddress, setDefaultAddress } = useDeliveryStore();
@@ -17,6 +19,7 @@ export default function DeliveryBookPage() {
     is_default: false,
   });
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [formError, setFormError] = useState<string>('');
 
   const handleOpenForm = (id?: number) => {
     if (id) {
@@ -45,12 +48,14 @@ export default function DeliveryBookPage() {
       });
       setEditingId(null);
     }
+    setFormError('');
     setIsFormOpen(true);
   };
 
   const handleCloseForm = () => {
     setIsFormOpen(false);
     setEditingId(null);
+    setFormError('');
     setForm({
       name: '',
       receiver_name: '',
@@ -63,28 +68,17 @@ export default function DeliveryBookPage() {
   };
 
   const handleSubmit = () => {
-    // Validate
-    if (!form.name.trim()) {
-      setToast({ message: '배송지명을 입력해주세요.', type: 'error' });
+    if (!form.name.trim()) { setFormError('배송지명을 입력해주세요.'); return; }
+    if (!form.receiver_name.trim()) { setFormError('수령인을 입력해주세요.'); return; }
+    if (!form.receiver_phone.trim()) { setFormError('연락처를 입력해주세요.'); return; }
+    if (!/^01[016789]-\d{3,4}-\d{4}$/.test(form.receiver_phone)) {
+      setFormError('연락처 형식이 올바르지 않습니다. (예: 010-1234-5678)');
       return;
     }
-    if (!form.receiver_name.trim()) {
-      setToast({ message: '수령인을 입력해주세요.', type: 'error' });
-      return;
-    }
-    if (!form.receiver_phone.trim()) {
-      setToast({ message: '연락처를 입력해주세요.', type: 'error' });
-      return;
-    }
-    if (!form.zipcode.trim()) {
-      setToast({ message: '우편번호를 입력해주세요.', type: 'error' });
-      return;
-    }
-    if (!form.address.trim()) {
-      setToast({ message: '주소를 입력해주세요.', type: 'error' });
-      return;
-    }
+    if (!form.zipcode.trim()) { setFormError('우편번호를 입력해주세요.'); return; }
+    if (!form.address.trim()) { setFormError('주소를 입력해주세요.'); return; }
 
+    setFormError('');
     if (editingId) {
       updateAddress(editingId, form);
       setToast({ message: '배송지가 수정되었습니다.', type: 'success' });
@@ -95,11 +89,34 @@ export default function DeliveryBookPage() {
     handleCloseForm();
   };
 
-  const handleDelete = (id: number) => {
-    if (confirm('정말 삭제하시겠습니까?')) {
-      deleteAddress(id);
-      setToast({ message: '배송지가 삭제되었습니다.', type: 'success' });
+  const handlePhoneChange = (value: string) => {
+    setForm((prev) => ({ ...prev, receiver_phone: value }));
+  };
+
+  const handleSearchAddress = async () => {
+    try {
+      await openDaumPostcode(({ zipcode, address }) => {
+        setForm((prev) => ({ ...prev, zipcode, address }));
+      });
+    } catch (e) {
+      setToast({
+        message: e instanceof Error ? e.message : '우편번호 검색을 열 수 없습니다.',
+        type: 'error',
+      });
     }
+  };
+
+  const handleDelete = (id: number) => {
+    if (!confirm('정말 삭제하시겠습니까?')) return;
+    const res = deleteAddress(id);
+    if (!res.ok) {
+      setToast({
+        message: '기본 배송지는 삭제할 수 없습니다. 다른 배송지를 기본으로 지정한 뒤 삭제해주세요.',
+        type: 'error',
+      });
+      return;
+    }
+    setToast({ message: '배송지가 삭제되었습니다.', type: 'success' });
   };
 
   return (
@@ -130,7 +147,7 @@ export default function DeliveryBookPage() {
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px' }}>
             {/* Sort: Default first */}
-            {addresses
+            {[...addresses]
               .sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0))
               .map((addr) => (
                 <div
@@ -169,13 +186,9 @@ export default function DeliveryBookPage() {
                         <strong>수령인:</strong> {addr.receiver_name} ({addr.receiver_phone})
                       </div>
                       <div>
-                        <strong>주소:</strong> [{addr.zipcode}] {addr.address} {addr.detail_address}
+                        <strong>주소:</strong> [{addr.zipcode}] {addr.address}
+                        {addr.detail_address ? ` ${addr.detail_address}` : ''}
                       </div>
-                      {addr.detail_address && (
-                        <div>
-                          <strong>상세:</strong> {addr.detail_address}
-                        </div>
-                      )}
                     </div>
                   </div>
 
@@ -304,22 +317,10 @@ export default function DeliveryBookPage() {
               </div>
 
               <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>
-                  연락처 *
-                </label>
-                <input
-                  type="tel"
-                  placeholder="01012345678"
+                <PhoneNumberInput
+                  label="연락처 *"
                   value={form.receiver_phone}
-                  onChange={(e) => setForm({ ...form, receiver_phone: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    border: '1px solid #ccc',
-                    borderRadius: '4px',
-                    fontSize: '14px',
-                    boxSizing: 'border-box',
-                  }}
+                  onChange={handlePhoneChange}
                 />
               </div>
 
@@ -327,20 +328,38 @@ export default function DeliveryBookPage() {
                 <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>
                   우편번호 *
                 </label>
-                <input
-                  type="text"
-                  placeholder="12345"
-                  value={form.zipcode}
-                  onChange={(e) => setForm({ ...form, zipcode: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    border: '1px solid #ccc',
-                    borderRadius: '4px',
-                    fontSize: '14px',
-                    boxSizing: 'border-box',
-                  }}
-                />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    placeholder="검색 버튼을 눌러주세요"
+                    value={form.zipcode}
+                    readOnly
+                    style={{
+                      flex: 1,
+                      padding: '12px',
+                      border: '1px solid #ccc',
+                      borderRadius: '4px',
+                      fontSize: '14px',
+                      boxSizing: 'border-box',
+                      background: '#f9f9f9',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSearchAddress}
+                    style={{
+                      padding: '0 16px',
+                      border: '1px solid #333',
+                      borderRadius: '4px',
+                      background: 'white',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    우편번호 검색
+                  </button>
+                </div>
               </div>
 
               <div style={{ marginBottom: '16px' }}>
@@ -349,9 +368,9 @@ export default function DeliveryBookPage() {
                 </label>
                 <input
                   type="text"
-                  placeholder="서울 강남구 테헤란로 123"
+                  placeholder="우편번호 검색으로 자동 입력됩니다"
                   value={form.address}
-                  onChange={(e) => setForm({ ...form, address: e.target.value })}
+                  readOnly
                   style={{
                     width: '100%',
                     padding: '12px',
@@ -359,6 +378,7 @@ export default function DeliveryBookPage() {
                     borderRadius: '4px',
                     fontSize: '14px',
                     boxSizing: 'border-box',
+                    background: '#f9f9f9',
                   }}
                 />
               </div>
@@ -395,6 +415,22 @@ export default function DeliveryBookPage() {
                   기본 배송지로 설정
                 </label>
               </div>
+
+              {formError && (
+                <div
+                  style={{
+                    marginBottom: '16px',
+                    padding: '10px 12px',
+                    border: '1px solid #f5c2c7',
+                    borderRadius: '4px',
+                    background: '#fdecea',
+                    color: '#b02a37',
+                    fontSize: '13px',
+                  }}
+                >
+                  {formError}
+                </div>
+              )}
 
               {/* Buttons */}
               <div style={{ display: 'flex', gap: '8px' }}>

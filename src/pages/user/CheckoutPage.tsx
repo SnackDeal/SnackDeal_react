@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useCartStore } from '@/stores/cartStore';
@@ -13,7 +13,7 @@ const FREE_SHIPPING_THRESHOLD = 50000;
 export default function CheckoutPage() {
   const navigate = useNavigate();
   const { member } = useAuthStore();
-  const { items: cartItems, getTotalPrice, clearCart } = useCartStore();
+  const { items: cartItems, removeItems } = useCartStore();
   const { addresses, getDefaultAddress } = useDeliveryStore();
   const { addOrder } = useOrderStore();
 
@@ -29,13 +29,23 @@ export default function CheckoutPage() {
   const [deliveryRequest, setDeliveryRequest] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const checkoutProductIds = useMemo(() => {
+    try {
+      const raw = sessionStorage.getItem('checkout-product-ids');
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.map(Number).filter(Number.isFinite) : [];
+    } catch {
+      return [];
+    }
+  }, []);
+  const checkoutItems = cartItems.filter((item) => checkoutProductIds.includes(item.product_id));
 
   useEffect(() => {
     if (!member) {
       setToast({ message: '로그인이 필요합니다.', type: 'error' });
       setTimeout(() => navigate('/login'), 2000);
     }
-    if (cartItems.length === 0) {
+    if (checkoutItems.length === 0) {
       setToast({ message: '장바구니가 비어있습니다.', type: 'error' });
       setTimeout(() => navigate('/cart'), 2000);
     }
@@ -45,9 +55,9 @@ export default function CheckoutPage() {
     if (defaultAddr && addresses.length > 0) {
       setSelectedAddressId(defaultAddr.id);
     }
-  }, [member, cartItems.length, navigate, addresses, getDefaultAddress]);
+  }, [member, checkoutItems.length, navigate, addresses, getDefaultAddress]);
 
-  if (!member || cartItems.length === 0) {
+  if (!member || checkoutItems.length === 0) {
     return (
       <>
         <div style={{ padding: '40px', textAlign: 'center' }}>리디렉션중...</div>
@@ -55,7 +65,7 @@ export default function CheckoutPage() {
     );
   }
 
-  const productAmount = getTotalPrice();
+  const productAmount = checkoutItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const shippingFee = productAmount >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
   const finalAmount = productAmount + shippingFee;
 
@@ -112,7 +122,7 @@ export default function CheckoutPage() {
         discount_amount: 0,
         final_amount: finalAmount,
         status: 'PAYMENT_COMPLETED',
-        items: cartItems.map((item) => ({
+        items: checkoutItems.map((item) => ({
           product_id: item.product_id,
           product_name: item.product_name,
           price: item.price,
@@ -124,7 +134,8 @@ export default function CheckoutPage() {
         },
       });
 
-      clearCart();
+      removeItems(checkoutProductIds);
+      sessionStorage.removeItem('checkout-product-ids');
       setIsProcessing(false);
       setToast({ message: '주문이 완료되었습니다.', type: 'success' });
       setTimeout(() => navigate('/mypage/orders'), 2000);
@@ -151,7 +162,7 @@ export default function CheckoutPage() {
             <section style={{ marginBottom: '40px' }}>
               <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px' }}>주문 상품</h2>
               <div style={{ border: '1px solid #eee', borderRadius: '4px', overflow: 'hidden' }}>
-                {cartItems.map((item, idx) => (
+                {checkoutItems.map((item, idx) => (
                   <div
                     key={item.product_id}
                     style={{
@@ -159,7 +170,7 @@ export default function CheckoutPage() {
                       gridTemplateColumns: '60px 1fr 60px 80px',
                       gap: '12px',
                       padding: '16px',
-                      borderBottom: idx < cartItems.length - 1 ? '1px solid #eee' : 'none',
+                      borderBottom: idx < checkoutItems.length - 1 ? '1px solid #eee' : 'none',
                       alignItems: 'center',
                     }}
                   >
