@@ -104,7 +104,7 @@ export function UserLayout() {
       'block rounded-lg px-3 py-2 text-sm font-medium transition-colors',
       isActive ? 'bg-brand-50 text-brand-700' : 'text-gray-600 hover:bg-gray-100'
     );
-  const myPageTarget = member ? '/mypage' : '/';
+  const myPageTarget = member ? '/mypage' : '/login';
 
   const mobileMenu = (
     <div className="flex h-full flex-col">

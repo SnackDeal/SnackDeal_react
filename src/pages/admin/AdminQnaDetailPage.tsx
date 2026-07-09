@@ -37,6 +37,11 @@ export default function AdminQnaDetailPage() {
   const [aiSuggestedAnswer, setAiSuggestedAnswer] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
+  const clearAiDraft = () => {
+    setAiSummary('');
+    setAiSuggestedAnswer('');
+  };
+
   useEffect(() => {
     if (!Number.isFinite(qnaId) || qnaId <= 0) {
       setError('잘못된 문의 ID입니다.');
@@ -51,12 +56,14 @@ export default function AdminQnaDetailPage() {
     let alive = true;
     setLoading(true);
     setError('');
+    clearAiDraft();
 
     apiGetAdminQna(accessToken, qnaId)
       .then((item) => {
         if (!alive) return;
         setDetail(item);
         setAnswer(item.answerContent ?? '');
+        if (item.answered) clearAiDraft();
       })
       .catch((e: { message?: string }) => {
         if (!alive) return;
@@ -113,6 +120,7 @@ export default function AdminQnaDetailPage() {
       const updated = await apiGetAdminQna(accessToken, detail.id);
       setDetail(updated);
       setAnswer(updated.answerContent ?? '');
+      clearAiDraft();
       setToast({ message: '답변이 등록되었습니다.', type: 'success' });
     } catch (e) {
       const message = e instanceof Error ? e.message : '답변 등록에 실패했습니다.';
