@@ -11,7 +11,7 @@ import type { NoticeResponse, NoticeSummaryResponse, QnaType } from '@/types';
 
 const configuredBaseUrl = ((import.meta.env.VITE_API_URL as string | undefined) ?? '').trim();
 const configuredChatbotBaseUrl = ((import.meta.env.VITE_CHATBOT_API_URL as string | undefined) ?? '').trim();
-const PRODUCTION_API_URL = 'https://snackdeal.mite88.site';
+const PRODUCTION_API_URL = 'https://snackdealapi.mite88.site';
 
 function isLocalBrowser() {
   if (typeof window === 'undefined') return false;
@@ -1407,11 +1407,11 @@ export async function apiCreateAdminQnaAnswer(
 
 /** POST /admin/qna/{qna_id}/ai-summary */
 export async function apiCreateAdminQnaAiSummary(
-  token: string,
+  _token: string,
   qnaId: number,
   payload: Omit<AdminQnaAiSummaryPayload, 'qna_id'>
 ): Promise<AdminQnaAiSummaryResponse> {
-  const data = await request<{ summary: string; suggested_answer?: string; suggestedAnswer?: string }>(
+  const data = await chatbotRequest<{ summary: string; suggested_answer?: string; suggestedAnswer?: string }>(
     `/admin/qna/${qnaId}/ai-summary`,
     {
       method: 'POST',
@@ -1419,8 +1419,7 @@ export async function apiCreateAdminQnaAiSummary(
         qna_id: qnaId,
         ...payload,
       }),
-    },
-    token
+    }
   );
 
   return {
