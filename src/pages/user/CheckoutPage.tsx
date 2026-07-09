@@ -140,7 +140,8 @@ export default function CheckoutPage() {
   const selectedCoupon = myCoupons.find((c) => c.userCouponId === selectedCouponId) ?? null;
   const now = new Date();
   const isCouponUsable = (c: MyCoupon) =>
-    productAmount >= c.minOrderPrice && new Date(c.validUntil).getTime() >= now.getTime();
+    productAmount >= c.minOrderPrice &&
+    (!c.validUntil || new Date(c.validUntil).getTime() >= now.getTime());
   const discountAmount = (() => {
     if (!selectedCoupon || !isCouponUsable(selectedCoupon)) return 0;
     if (selectedCoupon.discountType === 'FIXED') {

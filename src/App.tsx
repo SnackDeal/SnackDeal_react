@@ -21,7 +21,9 @@ import DeliveryBookPage from '@/pages/user/DeliveryBookPage';
 import EventList from '@/pages/user/EventList';
 import { EventDetail } from '@/pages/user/EventDetail';
 import NoticeListPage from '@/pages/user/Notice';
+import NoticeDetailPage from '@/pages/user/NoticeDetailPage';
 import QnaListPage from '@/pages/user/QnaList';
+import QnaDetailPage from '@/pages/user/QnaDetailPage';
 import { QnaNew } from '@/pages/user/QnaNew';
 
 // 관리자 페이지
@@ -37,8 +39,11 @@ import AdminCouponsPage from '@/pages/admin/AdminCoupons';
 import { AdminCouponBoards } from '@/pages/admin/AdminCouponBoards';
 import AdminMembersPage from '@/pages/admin/AdminMembers';
 import { AdminMemberDetail } from '@/pages/admin/AdminMemberDetail';
-import AdminNoticesPage from '@/pages/admin/AdminNotices';
-import AdminQnaPage from '@/pages/admin/AdminQna';
+import AdminNoticeListPage from '@/pages/admin/AdminNoticeList';
+import AdminNoticeDetailPage from '@/pages/admin/AdminNoticeDetailPage';
+import AdminNoticeFormPage from '@/pages/admin/AdminNoticeFormPage';
+import AdminQnaListPage from '@/pages/admin/AdminQnaList';
+import AdminQnaDetailPage from '@/pages/admin/AdminQnaDetailPage';
 import AdminFaqPage from '@/pages/admin/AdminFaq';
 
 import { NotFound } from '@/pages/NotFound';
@@ -71,7 +76,9 @@ export default function App() {
           <Route path="/event" element={<EventList />} />
           <Route path="/event/:id" element={<EventDetail />} />
           <Route path="/cs/notice" element={<NoticeListPage />} />
+          <Route path="/cs/notice/:id" element={<NoticeDetailPage />} />
           <Route path="/cs/qna" element={<QnaListPage />} />
+          <Route path="/cs/qna/:id" element={<QnaDetailPage />} />
           <Route path="/cs/qna/new" element={<QnaNew />} />
         </Route>
 
@@ -89,10 +96,14 @@ export default function App() {
           <Route path="/admin/coupon-boards" element={<AdminCouponBoards />} />
           <Route path="/admin/members" element={<AdminMembersPage />} />
           <Route path="/admin/members/:id" element={<AdminMemberDetail />} />
-          <Route path="/admin/cs/notices" element={<AdminNoticesPage />} />
+          <Route path="/admin/cs/notices" element={<AdminNoticeListPage />} />
+          <Route path="/admin/cs/notices/new" element={<AdminNoticeFormPage />} />
+          <Route path="/admin/cs/notices/:id" element={<AdminNoticeDetailPage />} />
+          <Route path="/admin/cs/notices/:id/edit" element={<AdminNoticeFormPage />} />
           <Route path="/admin/cs/faq" element={<AdminFaqPage />} />
-          <Route path="/admin/cs/qna" element={<AdminQnaPage />} />
-          <Route path="/admin/qna" element={<AdminQnaPage />} />
+          <Route path="/admin/cs/qna" element={<AdminQnaListPage />} />
+          <Route path="/admin/cs/qna/:id" element={<AdminQnaDetailPage />} />
+          <Route path="/admin/qna" element={<AdminQnaListPage />} />
         </Route>
 
         <Route path="*" element={<NotFound />} />

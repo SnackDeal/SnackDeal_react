@@ -56,8 +56,8 @@ export function Home() {
         const now = new Date();
         const active = rows.filter((board) => {
           const start = new Date(board.startAt);
-          const end = new Date(board.endAt);
-          return start <= now && now <= end;
+          const end = board.endAt ? new Date(board.endAt) : null;
+          return start <= now && (end === null || now <= end);
         });
         setEventBoards(active);
       })
@@ -297,12 +297,11 @@ function EmptyCategory() {
   );
 }
 
-function formatPeriod(from: string, to: string) {
+function formatPeriod(from: string, to: string | null) {
   const f = new Date(from);
-  const t = new Date(to);
   const fmt = (d: Date) =>
     `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(
       d.getDate()
     ).padStart(2, '0')}`;
-  return `${fmt(f)} ~ ${fmt(t)}`;
+  return `${fmt(f)} ~ ${to ? fmt(new Date(to)) : '상시'}`;
 }

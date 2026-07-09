@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from 'react';
+﻿import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Check, Gift } from 'lucide-react';
+import { Check, ChevronDown, Gift } from 'lucide-react';
 import { Button, Input, Select, Modal } from '@/components/ui';
 import { AuthShell } from '@/components/common/AuthShell';
 import { GoogleLoginButton } from '@/components/common/GoogleLoginButton';
@@ -265,7 +265,14 @@ function InfoStep({
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
-      <Input id="email" label="이메일" type="email" value={email} disabled />
+      <Input
+        id="email"
+        label="이메일"
+        type="email"
+        value={email}
+        disabled
+        className="bg-white disabled:bg-white disabled:text-ink-900"
+      />
       {!isSocial && (
         <>
           <Input
@@ -305,6 +312,7 @@ function InfoStep({
           value={birth}
           onChange={setBirth}
           className="flex-1"
+          selectClassName="bg-white disabled:bg-white disabled:text-ink-900"
         />
         <Select
           id="gender"
@@ -316,22 +324,48 @@ function InfoStep({
             { value: 'MALE', label: '남성' },
             { value: 'FEMALE', label: '여성' },
           ]}
-          className="w-32"
+          className="w-32 bg-white disabled:bg-white disabled:text-ink-900"
         />
       </div>
 
-      <label className="flex items-start gap-2 text-sm text-gray-600">
-        <input
-          type="checkbox"
-          checked={agree}
-          onChange={(e) => setAgree(e.target.checked)}
-          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-        />
-        <span>
-          <span className="font-medium text-gray-900">[필수]</span> 이용약관 및
-          개인정보처리방침에 동의합니다.
-        </span>
-      </label>
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+        <label className="flex items-start gap-2 text-sm text-gray-600">
+          <input
+            type="checkbox"
+            checked={agree}
+            onChange={(e) => setAgree(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+          />
+          <span>
+            <span className="font-medium text-gray-900">[필수]</span> 이용약관 및
+            개인정보처리방침에 동의합니다.
+          </span>
+        </label>
+        <div className="mt-3 flex flex-col gap-2">
+          <TermsAccordion title="개인정보 처리방침">
+            <p>
+              SnackDeal은 회원가입 및 서비스 제공을 위해 이메일, 이름, 휴대폰번호, 생년월일,
+              성별 등의 개인정보를 수집·이용합니다. 수집된 정보는 회원 관리, 주문/배송, 고객
+              문의 응대, 서비스 개선 목적으로 활용되며, 회원 탈퇴 시 또는 관련 법령에서 정한
+              보관 기간 이후 지체 없이 파기됩니다.
+            </p>
+          </TermsAccordion>
+          <TermsAccordion title="이용약관">
+            <p>
+              본 약관은 SnackDeal이 제공하는 온라인 서비스의 이용조건 및 절차, 회원과 회사의
+              권리·의무 및 책임사항을 규정합니다. 회원은 관계 법령과 본 약관, 이용안내 및
+              공지사항 등을 준수하여야 하며, 회사의 업무 방해 행위를 하여서는 안 됩니다.
+            </p>
+          </TermsAccordion>
+          <TermsAccordion title="마케팅 정보 수신 동의 (선택)">
+            <p>
+              혜택, 이벤트, 쿠폰 등 마케팅 정보를 이메일 및 SMS로 받아보실 수 있습니다. 수신
+              동의는 선택사항이며, 동의하지 않으셔도 회원가입 및 기본 서비스 이용에는 제한이
+              없습니다. 동의 후에도 언제든 마이페이지에서 수신을 취소할 수 있습니다.
+            </p>
+          </TermsAccordion>
+        </div>
+      </div>
 
       {error && <p className="text-sm text-red-500">{error}</p>}
 
@@ -420,7 +454,7 @@ function EmailStep({
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           disabled={loading || sent}
-          className="pr-36"
+          className="bg-white pr-36 disabled:bg-white disabled:text-ink-900"
         />
         <Button
           type="button"
@@ -462,6 +496,31 @@ function EmailStep({
         {loading ? '인증 중...' : '다음'}
       </Button>
     </form>
+  );
+}
+
+function TermsAccordion({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-gray-800 hover:bg-gray-50"
+        aria-expanded={open}
+      >
+        <span>{title}</span>
+        <ChevronDown
+          size={16}
+          className={cn('text-gray-500 transition-transform', open && 'rotate-180')}
+        />
+      </button>
+      {open && (
+        <div className="border-t border-gray-100 px-4 py-3 text-sm leading-6 text-gray-500">
+          {children}
+        </div>
+      )}
+    </div>
   );
 }
 
