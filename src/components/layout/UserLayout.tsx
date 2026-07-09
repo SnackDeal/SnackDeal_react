@@ -149,6 +149,7 @@ export function UserLayout() {
           </NavLink>
         ))}
         <div className="border-t border-gray-100 pt-2">
+         {/* 관리자 로그인 버튼 숨김 처리
           <NavLink
             to="/admin/login"
             onClick={() => setIsMobileMenuOpen(false)}
@@ -156,6 +157,7 @@ export function UserLayout() {
           >
             관리자 로그인
           </NavLink>
+          */}
         </div>
       </nav>
 
@@ -246,6 +248,7 @@ export function UserLayout() {
             </div>
           </nav>
           <div className="ml-auto flex items-center gap-1">
+            {/* 관리자 로그인 버튼 임시 숨김
             <Link
               to="/admin/login"
               className="hidden items-center gap-1.5 rounded-lg border border-brand-200 px-3 py-2 text-sm font-medium text-brand-700 hover:bg-brand-50 lg:inline-flex"
@@ -254,6 +257,7 @@ export function UserLayout() {
               <ShieldCheck size={18} />
               관리자 로그인
             </Link>
+            */}
             <Link
               to="/products"
               className="hidden rounded-lg p-2 text-gray-500 hover:bg-gray-100 sm:block"
