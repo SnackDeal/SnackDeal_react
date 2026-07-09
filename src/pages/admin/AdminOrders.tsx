@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuthStore } from '@/stores/adminAuthStore';
 import { apiGetAdminOrders, type AdminOrderSummary } from '@/lib/api';
+import { AdminPagination, type AdminPageSize } from '@/components/admin/Pagination';
 
 const ORDER_STATUS_LABELS: Record<string, string> = {
   PENDING_PAYMENT: '결제대기',
@@ -21,6 +22,7 @@ export default function AdminOrdersPage() {
   const [rows, setRows] = useState<AdminOrderSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState<AdminPageSize>(20);
   const [keyword, setKeyword] = useState('');
   const [status, setStatus] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -28,22 +30,20 @@ export default function AdminOrdersPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const SIZE = 20;
-
   useEffect(() => {
     if (!adminSession || !accessToken) return;
     setLoading(true);
     setError(null);
 
-    apiGetAdminOrders(accessToken, { keyword, status, dateFrom, dateTo, page, size: SIZE })
+    apiGetAdminOrders(accessToken, { keyword, status, dateFrom, dateTo, page, size: pageSize })
       .then((res) => { setRows(res.orders); setTotal(res.total); })
       .catch((e: any) => { setError(e?.message ?? '주문 목록을 불러올 수 없습니다.'); setRows([]); setTotal(0); })
       .finally(() => setLoading(false));
-  }, [adminSession, accessToken, keyword, status, dateFrom, dateTo, page]);
+  }, [adminSession, accessToken, keyword, status, dateFrom, dateTo, page, pageSize]);
 
   if (!adminSession) return null;
 
-  const totalPages = Math.ceil(total / SIZE);
+  const totalPages = Math.ceil(total / pageSize);
 
   return (
     <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
@@ -111,8 +111,22 @@ export default function AdminOrdersPage() {
                     </td>
                     <td style={{ padding: '12px', textAlign: 'center' }}>
                       <button
-                        onClick={() => navigate(`/admin/orders/${o.orderId}`)}
-                        style={{ padding: '6px 12px', border: '1px solid #ccc', borderRadius: '4px', background: 'white', cursor: 'pointer', fontSize: '11px' }}
+                        type="button"
+                        disabled={o.status === 'CANCELLED'}
+                        title={o.status === 'CANCELLED' ? '취소된 주문은 상세를 볼 수 없습니다.' : undefined}
+                        onClick={() => {
+                          if (o.status === 'CANCELLED') return;
+                          navigate(`/admin/orders/${o.orderId}`);
+                        }}
+                        style={{
+                          padding: '6px 12px',
+                          border: '1px solid #ccc',
+                          borderRadius: '4px',
+                          background: o.status === 'CANCELLED' ? '#f5f5f5' : 'white',
+                          color: o.status === 'CANCELLED' ? '#999' : '#111',
+                          cursor: o.status === 'CANCELLED' ? 'not-allowed' : 'pointer',
+                          fontSize: '11px',
+                        }}
                       >
                         상세
                       </button>
@@ -123,21 +137,15 @@ export default function AdminOrdersPage() {
             </table>
           </div>
 
-          {totalPages > 1 && (
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '16px' }}>
-              <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}
-                style={{ padding: '6px 12px', border: '1px solid #ccc', borderRadius: '4px', background: 'white', cursor: page === 0 ? 'not-allowed' : 'pointer', fontSize: '12px' }}>
-                이전
-              </button>
-              <span style={{ padding: '6px 12px', fontSize: '12px', color: '#666' }}>
-                {page + 1} / {totalPages} (총 {total}건)
-              </span>
-              <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
-                style={{ padding: '6px 12px', border: '1px solid #ccc', borderRadius: '4px', background: 'white', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer', fontSize: '12px' }}>
-                다음
-              </button>
-            </div>
-          )}
+          <AdminPagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(0); }}
+            unitLabel="건"
+          />
         </>
       )}
     </div>

@@ -15,14 +15,14 @@ export default function OrderCompletePage() {
       </p>
 
       <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        <Link to="/mypage/orders">
+          <Button>주문내역 확인</Button>
+        </Link>
         {orderId && (
           <Link to={`/mypage/orders/${orderId}`}>
-            <Button>주문 상세 보기</Button>
+            <Button variant="secondary">주문 상세 보기</Button>
           </Link>
         )}
-        <Link to="/mypage/orders">
-          <Button variant="secondary">주문내역</Button>
-        </Link>
         <Link to="/product">
           <Button variant="outline">계속 쇼핑하기</Button>
         </Link>

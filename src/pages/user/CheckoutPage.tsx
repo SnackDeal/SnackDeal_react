@@ -42,19 +42,12 @@ export default function CheckoutPage() {
   const { addresses, getDefaultAddress } = useDeliveryStore();
 
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
-  const [useCustomAddress, setUseCustomAddress] = useState(false);
-  const [customAddress, setCustomAddress] = useState({
-    receiver_name: '',
-    receiver_phone: '',
-    zipcode: '',
-    address: '',
-    detail_address: '',
-  });
   const [deliveryRequest, setDeliveryRequest] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPaymentCompleted, setIsPaymentCompleted] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [myCoupons, setMyCoupons] = useState<MyCoupon[]>([]);
+  const [isCouponsLoading, setIsCouponsLoading] = useState(true);
   const [selectedCouponId, setSelectedCouponId] = useState<number | null>(null);
   const checkoutProductIds = useMemo(() => {
     try {
@@ -99,16 +92,45 @@ export default function CheckoutPage() {
   }, [member, checkoutItems.length, navigate, addresses, getDefaultAddress, isPaymentCompleted]);
 
   useEffect(() => {
-    if (!accessToken) return;
+    if (!accessToken) {
+      setMyCoupons([]);
+      setIsCouponsLoading(false);
+      return;
+    }
+
+    let ignore = false;
+    setIsCouponsLoading(true);
     apiGetMyCoupons(accessToken)
-      .then((coupons) => setMyCoupons(coupons.filter((c) => c.status === 'ACTIVE')))
-      .catch(() => setMyCoupons([]));
+      .then((coupons) => {
+        if (ignore) return;
+        setMyCoupons(coupons.filter((c) => c.status === 'ACTIVE'));
+      })
+      .catch(() => {
+        if (ignore) return;
+        setMyCoupons([]);
+      })
+      .finally(() => {
+        if (ignore) return;
+        setIsCouponsLoading(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
   }, [accessToken]);
 
   if (!member || checkoutItems.length === 0) {
     return (
       <>
         <div style={{ padding: '40px', textAlign: 'center' }}>리디렉션중...</div>
+      </>
+    );
+  }
+
+  if (isCouponsLoading) {
+    return (
+      <>
+        <div style={{ padding: '40px', textAlign: 'center' }}>쿠폰 정보를 불러오는 중...</div>
       </>
     );
   }
@@ -126,13 +148,12 @@ export default function CheckoutPage() {
     }
     return Math.floor((productAmount * selectedCoupon.discountValue) / 100);
   })();
-  const finalAmount = Math.max(0, productAmount + shippingFee - discountAmount);
+  const estimatedFinalAmount = Math.max(0, productAmount + shippingFee - discountAmount);
 
-  const selectedAddr = !useCustomAddress && selectedAddressId ? addresses.find((a) => a.id === selectedAddressId) : null;
+  const selectedAddr = selectedAddressId ? addresses.find((a) => a.id === selectedAddressId) : null;
 
   const handleSelectAddress = (id: number) => {
     setSelectedAddressId(id);
-    setUseCustomAddress(false);
   };
 
   const handlePayment = async () => {
@@ -141,25 +162,7 @@ export default function CheckoutPage() {
       return;
     }
 
-    // Validate address
-    if (useCustomAddress) {
-      if (!customAddress.receiver_name.trim()) {
-        setToast({ message: '수령인을 입력해주세요.', type: 'error' });
-        return;
-      }
-      if (!customAddress.receiver_phone.trim()) {
-        setToast({ message: '연락처를 입력해주세요.', type: 'error' });
-        return;
-      }
-      if (!customAddress.zipcode.trim()) {
-        setToast({ message: '우편번호를 입력해주세요.', type: 'error' });
-        return;
-      }
-      if (!customAddress.address.trim()) {
-        setToast({ message: '주소를 입력해주세요.', type: 'error' });
-        return;
-      }
-    } else if (!selectedAddr) {
+    if (!selectedAddr) {
       setToast({ message: '배송지를 선택해주세요.', type: 'error' });
       return;
     }
@@ -167,15 +170,13 @@ export default function CheckoutPage() {
     setIsProcessing(true);
 
     try {
-      const shippingData = useCustomAddress
-        ? customAddress
-        : {
-            receiver_name: selectedAddr!.receiver_name,
-            receiver_phone: selectedAddr!.receiver_phone,
-            zipcode: selectedAddr!.zipcode,
-            address: selectedAddr!.address,
-            detail_address: selectedAddr!.detail_address,
-          };
+      const shippingData = {
+        receiver_name: selectedAddr.receiver_name,
+        receiver_phone: selectedAddr.receiver_phone,
+        zipcode: selectedAddr.zipcode,
+        address: selectedAddr.address,
+        detail_address: selectedAddr.detail_address,
+      };
 
       const prepared = await apiPrepareOrder(accessToken, {
         items: checkoutItems.map((item) => ({
@@ -190,7 +191,7 @@ export default function CheckoutPage() {
           detailAddress: shippingData.detail_address,
           deliveryRequest,
         },
-        userCouponId: selectedCoupon && isCouponUsable(selectedCoupon) ? selectedCoupon.userCouponId : undefined,
+        userCouponId: selectedCouponId,
       });
 
       await requestPortOnePayment(prepared, getOrderName(checkoutItems));
@@ -269,175 +270,99 @@ export default function CheckoutPage() {
 
             {/* Shipping Address */}
             <section style={{ marginBottom: '40px' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px' }}>배송지</h2>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h2 style={{ fontSize: '18px', fontWeight: 'bold' }}>배송지</h2>
+                <button
+                  type="button"
+                  onClick={() => navigate('/mypage/delivery')}
+                  style={{
+                    padding: '8px 12px',
+                    border: '1px solid #ccc',
+                    borderRadius: '4px',
+                    background: 'white',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                  }}
+                >
+                  주소록 관리
+                </button>
+              </div>
 
-              {/* Saved Addresses */}
-              {addresses.length > 0 && !useCustomAddress && (
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', marginBottom: '12px', fontSize: '14px', fontWeight: '600' }}>
-                    저장된 배송지
-                  </label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {addresses.map((addr) => (
-                      <label
-                        key={addr.id}
-                        style={{
-                          display: 'flex',
-                          gap: '12px',
-                          padding: '12px',
-                          border: selectedAddressId === addr.id ? '2px solid #333' : '1px solid #eee',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          background: selectedAddressId === addr.id ? '#f5f5f5' : 'white',
-                        }}
-                      >
-                        <input
-                          type="radio"
-                          name="address"
-                          checked={selectedAddressId === addr.id}
-                          onChange={() => handleSelectAddress(addr.id)}
-                          style={{ cursor: 'pointer', marginTop: '2px' }}
-                        />
-                        <div style={{ fontSize: '14px', flex: 1 }}>
-                          <div style={{ fontWeight: '600' }}>
-                            {addr.name}
-                            {addr.is_default && (
-                              <span style={{ fontSize: '11px', marginLeft: '8px', color: '#666' }}>
-                                (기본)
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ color: '#666', marginTop: '4px' }}>
-                            {addr.receiver_name} | {addr.receiver_phone}
-                          </div>
-                          <div style={{ color: '#666', fontSize: '12px', marginTop: '4px' }}>
-                            [{addr.zipcode}] {addr.address} {addr.detail_address}
-                          </div>
-                        </div>
-                      </label>
-                    ))}
+              {addresses.length === 0 ? (
+                <div
+                  style={{
+                    padding: '20px',
+                    border: '1px dashed #cbd5e1',
+                    borderRadius: '4px',
+                    background: '#f8fafc',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '12px',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div style={{ fontSize: '13px', color: '#475569' }}>
+                    저장된 배송지가 없습니다. 주소록에서 배송지를 먼저 등록해주세요.
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/mypage/delivery')}
+                    style={{
+                      padding: '10px 16px',
+                      border: 'none',
+                      borderRadius: '4px',
+                      background: '#ea580c',
+                      color: 'white',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                    }}
+                  >
+                    배송지 등록하러 가기
+                  </button>
                 </div>
-              )}
-
-              {/* Toggle Custom Address */}
-              <button
-                onClick={() => setUseCustomAddress(!useCustomAddress)}
-                style={{
-                  marginBottom: '16px',
-                  padding: '8px 12px',
-                  border: '1px solid #ccc',
-                  borderRadius: '4px',
-                  background: 'white',
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                }}
-              >
-                {useCustomAddress ? '저장된 배송지 사용' : '다른 배송지 입력'}
-              </button>
-
-              {/* Custom Address Form */}
-              {useCustomAddress && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '600' }}>
-                      수령인 *
-                    </label>
-                    <input
-                      type="text"
-                      value={customAddress.receiver_name}
-                      onChange={(e) => setCustomAddress({ ...customAddress, receiver_name: e.target.value })}
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {addresses.map((addr) => (
+                    <label
+                      key={addr.id}
                       style={{
-                        width: '100%',
-                        padding: '10px',
-                        border: '1px solid #ccc',
+                        display: 'flex',
+                        gap: '12px',
+                        padding: '12px',
+                        border: selectedAddressId === addr.id ? '2px solid #333' : '1px solid #eee',
                         borderRadius: '4px',
-                        fontSize: '14px',
-                        boxSizing: 'border-box',
+                        cursor: 'pointer',
+                        background: selectedAddressId === addr.id ? '#f5f5f5' : 'white',
                       }}
-                    />
-                  </div>
-
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '600' }}>
-                      연락처 *
+                    >
+                      <input
+                        type="radio"
+                        name="address"
+                        checked={selectedAddressId === addr.id}
+                        onChange={() => handleSelectAddress(addr.id)}
+                        style={{ cursor: 'pointer', marginTop: '2px' }}
+                      />
+                      <div style={{ fontSize: '14px', flex: 1 }}>
+                        <div style={{ fontWeight: '600' }}>
+                          {addr.name}
+                          {addr.is_default && (
+                            <span style={{ fontSize: '11px', marginLeft: '8px', color: '#666' }}>
+                              (기본)
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ color: '#666', marginTop: '4px' }}>
+                          {addr.receiver_name} | {addr.receiver_phone}
+                        </div>
+                        <div style={{ color: '#666', fontSize: '12px', marginTop: '4px' }}>
+                          [{addr.zipcode}] {addr.address} {addr.detail_address}
+                        </div>
+                      </div>
                     </label>
-                    <input
-                      type="tel"
-                      value={customAddress.receiver_phone}
-                      onChange={(e) => setCustomAddress({ ...customAddress, receiver_phone: e.target.value })}
-                      placeholder="01012345678"
-                      style={{
-                        width: '100%',
-                        padding: '10px',
-                        border: '1px solid #ccc',
-                        borderRadius: '4px',
-                        fontSize: '14px',
-                        boxSizing: 'border-box',
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '600' }}>
-                      우편번호 *
-                    </label>
-                    <input
-                      type="text"
-                      value={customAddress.zipcode}
-                      onChange={(e) => setCustomAddress({ ...customAddress, zipcode: e.target.value })}
-                      placeholder="12345"
-                      style={{
-                        width: '100%',
-                        padding: '10px',
-                        border: '1px solid #ccc',
-                        borderRadius: '4px',
-                        fontSize: '14px',
-                        boxSizing: 'border-box',
-                      }}
-                    />
-                  </div>
-
-                  <div></div>
-
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '600' }}>
-                      주소 *
-                    </label>
-                    <input
-                      type="text"
-                      value={customAddress.address}
-                      onChange={(e) => setCustomAddress({ ...customAddress, address: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '10px',
-                        border: '1px solid #ccc',
-                        borderRadius: '4px',
-                        fontSize: '14px',
-                        boxSizing: 'border-box',
-                      }}
-                    />
-                  </div>
-
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '600' }}>
-                      상세주소
-                    </label>
-                    <input
-                      type="text"
-                      value={customAddress.detail_address}
-                      onChange={(e) => setCustomAddress({ ...customAddress, detail_address: e.target.value })}
-                      placeholder="건물명, 호수 등"
-                      style={{
-                        width: '100%',
-                        padding: '10px',
-                        border: '1px solid #ccc',
-                        borderRadius: '4px',
-                        fontSize: '14px',
-                        boxSizing: 'border-box',
-                      }}
-                    />
-                  </div>
+                  ))}
                 </div>
               )}
             </section>
@@ -551,7 +476,7 @@ export default function CheckoutPage() {
                       color: '#c62828',
                     }}
                   >
-                    <span>쿠폰 할인</span>
+                    <span>예상 쿠폰 할인</span>
                     <span>-₩{discountAmount.toLocaleString()}</span>
                   </div>
                 )}
@@ -568,8 +493,8 @@ export default function CheckoutPage() {
                   marginBottom: '20px',
                 }}
               >
-                <span>최종 결제금액</span>
-                <span>₩{finalAmount.toLocaleString()}</span>
+                <span>예상 결제금액</span>
+                <span>₩{estimatedFinalAmount.toLocaleString()}</span>
               </div>
 
               <Button
@@ -615,6 +540,10 @@ function getOrderName(items: CartItem[]) {
 async function requestPortOnePayment(prepared: OrderPrepareResponse, orderName: string) {
   if (!window.PortOne?.requestPayment) {
     throw new Error('결제 SDK가 로드되지 않았습니다. PortOne SDK 설정을 확인해주세요.');
+  }
+
+  if (typeof prepared.amount !== 'number') {
+    throw new Error('결제 금액을 확인할 수 없습니다. 주문 준비 응답을 확인해주세요.');
   }
 
   const payment = await window.PortOne.requestPayment({

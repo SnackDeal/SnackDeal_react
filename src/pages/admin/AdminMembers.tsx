@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuthStore } from '@/stores/adminAuthStore';
 import { apiGetAdminMembers, type MemberDescription } from '@/lib/api';
+import { AdminPagination, type AdminPageSize } from '@/components/admin/Pagination';
 
 const STATUS_LABELS: Record<string, string> = { ACTIVE: '활성', INACTIVE: '비활성', DELETED: '탈퇴' };
 const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
@@ -17,19 +18,18 @@ export default function AdminMembersPage() {
   const [rows, setRows] = useState<MemberDescription[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState<AdminPageSize>(10);
   const [keyword, setKeyword] = useState('');
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const SIZE = 10;
 
   const load = useCallback(async () => {
     if (!adminSession || !accessToken) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await apiGetAdminMembers(accessToken, { keyword, status, page, size: SIZE });
+      const res = await apiGetAdminMembers(accessToken, { keyword, status, page, size: pageSize });
       setRows(res.content);
       setTotal(res.totalElements);
     } catch (e: any) {
@@ -39,13 +39,13 @@ export default function AdminMembersPage() {
     } finally {
       setLoading(false);
     }
-  }, [adminSession, accessToken, keyword, status, page]);
+  }, [adminSession, accessToken, keyword, status, page, pageSize]);
 
   useEffect(() => { load(); }, [load]);
 
   if (!adminSession) return null;
 
-  const totalPages = Math.ceil(total / SIZE);
+  const totalPages = Math.ceil(total / pageSize);
 
   return (
     <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
@@ -125,22 +125,15 @@ export default function AdminMembersPage() {
             </table>
           </div>
 
-          {/* 페이징 */}
-          {totalPages > 1 && (
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '16px' }}>
-              <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}
-                style={{ padding: '6px 12px', border: '1px solid #ccc', borderRadius: '4px', background: 'white', cursor: page === 0 ? 'not-allowed' : 'pointer', fontSize: '12px' }}>
-                이전
-              </button>
-              <span style={{ padding: '6px 12px', fontSize: '12px', color: '#666' }}>
-                {page + 1} / {totalPages} (총 {total}명)
-              </span>
-              <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
-                style={{ padding: '6px 12px', border: '1px solid #ccc', borderRadius: '4px', background: 'white', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer', fontSize: '12px' }}>
-                다음
-              </button>
-            </div>
-          )}
+          <AdminPagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(0); }}
+            unitLabel="명"
+          />
         </>
       )}
     </div>

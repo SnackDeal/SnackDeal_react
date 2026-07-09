@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
-import { useCouponStore } from '@/stores/couponStore';
 import { Button } from '@/components/ui/Button';
 import { PhoneNumberInput } from '@/components/common/PhoneNumberInput';
 import { formatPhoneNumberForStorage, isCompletePhoneNumber } from '@/lib/phone';
 import {
   apiGetMe,
+  apiGetMyCoupons,
   apiGetOrders,
   apiUpdateMe,
   type ApiError,
   type MemberDescription,
+  type MyCoupon,
   type OrderSummary,
 } from '@/lib/api';
 
@@ -28,14 +29,14 @@ const ORDER_STATUS_LABEL: Record<string, string> = {
 export default function MyPage() {
   const navigate = useNavigate();
   const { member, accessToken, updateMember, logout } = useAuthStore();
-  const { getUserCoupons } = useCouponStore();
   const [activeMenu, setActiveMenu] = useState<'overview' | 'orders' | 'coupons' | 'delivery' | 'profile'>('overview');
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [ordersError, setOrdersError] = useState<string | null>(null);
+  const [myCoupons, setMyCoupons] = useState<MyCoupon[]>([]);
 
   // 백엔드 연동 시 최신 내 정보 갱신
   useEffect(() => {
-    if (!member) { navigate('/login'); return; }
+    if (!member) { navigate('/', { replace: true }); return; }
     if (accessToken) {
       apiGetMe(accessToken).then(updateMember).catch(() => {});
       apiGetOrders(accessToken, 0, 20)
@@ -47,6 +48,9 @@ export default function MyPage() {
           setOrders([]);
           setOrdersError(error.message ?? '주문내역을 불러올 수 없습니다.');
         });
+      apiGetMyCoupons(accessToken)
+        .then(setMyCoupons)
+        .catch(() => setMyCoupons([]));
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -59,9 +63,10 @@ export default function MyPage() {
   }
 
   const recentOrders = orders.slice(0, 5);
-  const activeCoupons = getUserCoupons('ACTIVE');
-  const usedCoupons = getUserCoupons('USED');
-  const expiredCoupons = getUserCoupons('EXPIRED');
+  const now = Date.now();
+  const activeCoupons = myCoupons.filter((c) => c.status === 'ACTIVE' && new Date(c.validUntil).getTime() >= now);
+  const usedCoupons = myCoupons.filter((c) => c.status === 'USED');
+  const expiredCoupons = myCoupons.filter((c) => c.status === 'EXPIRED' || (c.status === 'ACTIVE' && new Date(c.validUntil).getTime() < now));
   const totalOrderAmount = orders.reduce((sum, o) => sum + o.finalAmount, 0);
   const totalOrderCount = orders.length;
 
@@ -213,16 +218,16 @@ export default function MyPage() {
                     <div style={{ textAlign: 'center', padding: '24px', color: '#666', fontSize: '14px' }}>사용 가능한 쿠폰이 없습니다.</div>
                   ) : (
                     <div style={{ display: 'grid', gap: '12px' }}>
-                      {activeCoupons.map((uc) => (
-                        <div key={uc.id} style={{ border: '1px solid #eee', borderRadius: '4px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      {activeCoupons.map((c) => (
+                        <div key={c.userCouponId} style={{ border: '1px solid #eee', borderRadius: '4px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div>
-                            <div style={{ fontWeight: '600', marginBottom: '8px' }}>{uc.coupon.name}</div>
+                            <div style={{ fontWeight: '600', marginBottom: '8px' }}>{c.couponName}</div>
                             <div style={{ fontSize: '12px', color: '#666' }}>
-                              {uc.coupon.discount_type === 'FIXED' ? `₩${uc.coupon.discount_value.toLocaleString()}` : `${uc.coupon.discount_value}%`} 할인
+                              {c.discountType === 'FIXED' ? `₩${c.discountValue.toLocaleString()}` : `${c.discountValue}%`} 할인
                             </div>
-                            <div style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>~ {new Date(uc.coupon.valid_until).toLocaleDateString()}</div>
+                            <div style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>~ {new Date(c.validUntil).toLocaleDateString()}</div>
                           </div>
-                          <div style={{ fontSize: '12px', color: '#666' }}>최소 ₩{uc.coupon.min_order_price.toLocaleString()}</div>
+                          <div style={{ fontSize: '12px', color: '#666' }}>최소 ₩{c.minOrderPrice.toLocaleString()}</div>
                         </div>
                       ))}
                     </div>
@@ -230,14 +235,14 @@ export default function MyPage() {
                 </div>
                 <div style={{ marginBottom: '32px' }}>
                   <h3 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '16px' }}>사용 완료 ({usedCoupons.length})</h3>
-                  {usedCoupons.map((uc) => (
-                    <div key={uc.id} style={{ padding: '12px', color: '#999', fontSize: '12px' }}>{uc.coupon.name} - 사용함</div>
+                  {usedCoupons.map((c) => (
+                    <div key={c.userCouponId} style={{ padding: '12px', color: '#999', fontSize: '12px' }}>{c.couponName} - 사용함</div>
                   ))}
                 </div>
                 <div>
                   <h3 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '16px' }}>만료됨 ({expiredCoupons.length})</h3>
-                  {expiredCoupons.map((uc) => (
-                    <div key={uc.id} style={{ padding: '12px', color: '#999', fontSize: '12px' }}>{uc.coupon.name} - 만료됨</div>
+                  {expiredCoupons.map((c) => (
+                    <div key={c.userCouponId} style={{ padding: '12px', color: '#999', fontSize: '12px' }}>{c.couponName} - 만료됨</div>
                   ))}
                 </div>
               </div>

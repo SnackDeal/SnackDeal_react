@@ -1,46 +1,104 @@
-import { useEffect, useState } from 'react';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
+  ChevronDown,
   LayoutDashboard,
-  Package,
-  Tags,
-  ShoppingBag,
-  Ticket,
-  Megaphone,
-  Users,
-  MessageSquare,
   LogOut,
   Menu,
+  MessageSquare,
+  Package,
+  ShoppingBag,
+  Tags,
+  Ticket,
+  Users,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
-import { useAdminAuthStore } from '@/stores/adminAuthStore';
 import { apiAdminLogout } from '@/lib/api';
+import { useAdminAuthStore } from '@/stores/adminAuthStore';
 
-const navItems = [
+type NavLeaf = {
+  to: string;
+  label: string;
+  end?: boolean;
+};
+
+type NavItem =
+  | {
+      to: string;
+      label: string;
+      icon: typeof LayoutDashboard;
+      end?: boolean;
+    }
+  | {
+      label: string;
+      icon: typeof LayoutDashboard;
+      children: NavLeaf[];
+      prefixes: string[];
+    };
+
+const navItems: NavItem[] = [
   { to: '/admin', label: '대시보드', icon: LayoutDashboard, end: true },
   { to: '/admin/products', label: '상품관리', icon: Package },
   { to: '/admin/categories', label: '카테고리', icon: Tags },
   { to: '/admin/orders', label: '주문관리', icon: ShoppingBag },
-  { to: '/admin/coupons', label: '쿠폰관리', icon: Ticket },
-  { to: '/admin/coupon-boards', label: '이벤트게시판', icon: Megaphone },
+  {
+    label: '쿠폰관리',
+    icon: Ticket,
+    prefixes: ['/admin/coupons', '/admin/coupon-boards'],
+    children: [
+      { to: '/admin/coupons', label: '쿠폰 목록', end: true },
+      { to: '/admin/coupons/boards', label: '이벤트 게시판' },
+    ],
+  },
   { to: '/admin/members', label: '회원관리', icon: Users },
-  { to: '/admin/qna', label: '문의관리', icon: MessageSquare },
+  {
+    label: '고객센터',
+    icon: MessageSquare,
+    prefixes: ['/admin/cs', '/admin/qna'],
+    children: [
+      { to: '/admin/cs/notices', label: '공지사항', end: true },
+      { to: '/admin/cs/faq', label: 'FAQ', end: true },
+      { to: '/admin/cs/qna', label: '문의관리', end: true },
+    ],
+  },
 ];
 
 export function AdminLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { adminSession, accessToken, adminLogout } = useAdminAuthStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const isAuthorizedAdmin = adminSession?.role === 'ADMIN' && Boolean(accessToken);
+
+  const defaultOpenGroups = useMemo(
+    () => ({
+      coupons:
+        location.pathname.startsWith('/admin/coupons') ||
+        location.pathname.startsWith('/admin/coupon-boards'),
+      cs:
+        location.pathname.startsWith('/admin/cs') || location.pathname.startsWith('/admin/qna'),
+    }),
+    [location.pathname]
+  );
+
+  const [openGroups, setOpenGroups] = useState(defaultOpenGroups);
 
   useEffect(() => {
-    if (!adminSession || !accessToken) {
-      setIsMobileMenuOpen(false);
-      navigate('/admin/login', { replace: true });
-    }
-  }, [adminSession, accessToken, navigate]);
+    setOpenGroups((prev) => ({
+      coupons: prev.coupons || defaultOpenGroups.coupons,
+      cs: prev.cs || defaultOpenGroups.cs,
+    }));
+  }, [defaultOpenGroups]);
 
-  if (!adminSession || !accessToken) {
+  useEffect(() => {
+    if (!isAuthorizedAdmin) {
+      setIsMobileMenuOpen(false);
+      navigate('/admin/login', { replace: true, state: { from: location.pathname } });
+    }
+  }, [isAuthorizedAdmin, location.pathname, navigate]);
+
+  if (!isAuthorizedAdmin) {
     return null;
   }
 
@@ -52,9 +110,80 @@ export function AdminLayout() {
         /* ignore */
       }
     }
+
     adminLogout();
     setIsMobileMenuOpen(false);
     navigate('/admin/login', { replace: true });
+  };
+
+  const toggleGroup = (key: 'coupons' | 'cs') => {
+    setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const renderNavItem = (item: NavItem) => {
+    if ('to' in item) {
+      const Icon = item.icon;
+      return (
+        <NavLink
+          key={item.to}
+          to={item.to}
+          end={item.end}
+          onClick={() => setIsMobileMenuOpen(false)}
+          className={({ isActive }) =>
+            cn(
+              'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+              isActive ? 'bg-brand-50 text-brand-700' : 'text-gray-600 hover:bg-gray-100'
+            )
+          }
+        >
+          <Icon size={18} />
+          {item.label}
+        </NavLink>
+      );
+    }
+
+    const Icon = item.icon;
+    const groupKey = item.label === '쿠폰관리' ? 'coupons' : 'cs';
+    const isGroupActive = item.prefixes.some((prefix) => location.pathname.startsWith(prefix));
+    const isOpen = openGroups[groupKey];
+
+    return (
+      <div key={item.label} className="space-y-1">
+        <button
+          type="button"
+          onClick={() => toggleGroup(groupKey)}
+          className={cn(
+            'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+            isGroupActive ? 'bg-brand-50 text-brand-700' : 'text-gray-600 hover:bg-gray-100'
+          )}
+        >
+          <Icon size={18} />
+          <span className="flex-1 text-left">{item.label}</span>
+          <ChevronDown size={16} className={cn('transition-transform', isOpen ? 'rotate-180' : '')} />
+        </button>
+
+        {isOpen && (
+          <div className="ml-4 space-y-1 border-l border-gray-200 pl-3">
+            {item.children.map((child) => (
+              <NavLink
+                key={child.to}
+                to={child.to}
+                end={child.end}
+                onClick={() => setIsMobileMenuOpen(false)}
+                className={({ isActive }) =>
+                  cn(
+                    'flex items-center rounded-lg px-3 py-2 text-sm transition-colors',
+                    isActive ? 'bg-brand-50 font-semibold text-brand-700' : 'text-gray-600 hover:bg-gray-100'
+                  )
+                }
+              >
+                {child.label}
+              </NavLink>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   };
 
   const sidebarContent = (
@@ -77,28 +206,7 @@ export function AdminLayout() {
         </button>
       </div>
 
-      <nav className="flex-1 space-y-1 px-3 py-4">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              onClick={() => setIsMobileMenuOpen(false)}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                  isActive ? 'bg-brand-50 text-brand-700' : 'text-gray-600 hover:bg-gray-100'
-                )
-              }
-            >
-              <Icon size={18} />
-              {item.label}
-            </NavLink>
-          );
-        })}
-      </nav>
+      <nav className="flex-1 space-y-1 px-3 py-4">{navItems.map(renderNavItem)}</nav>
 
       <div className="border-t border-gray-200 px-3 py-3">
         <button

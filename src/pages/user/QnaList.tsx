@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { useCSStore } from '@/stores/csStore';
+import { apiGetPublicFaqs, type PublicFaq } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Toast } from '@/components/ui/Toast';
 
@@ -13,14 +14,47 @@ const QNA_TYPES = [
 
 export default function QnaListPage() {
   const { member } = useAuthStore();
-  const { getFAQs, getQNAs, addQNA } = useCSStore();
+  const { getQNAs, addQNA } = useCSStore();
   const [tab, setTab] = useState<'faq' | 'qna'>('faq');
+  const [faqType, setFaqType] = useState<'ALL' | 'ORDER' | 'SHIPPING' | 'PRODUCT' | 'OTHER'>('ALL');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [form, setForm] = useState({ type: 'OTHER', title: '', content: '' });
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [faqs, setFaqs] = useState<PublicFaq[]>([]);
+  const [faqLoading, setFaqLoading] = useState(false);
+  const [faqError, setFaqError] = useState('');
 
-  const faqs = getFAQs();
   const myQNAs = member ? getQNAs(Number(member.id)) : [];
+  const faqTypeOptions = [
+    { value: 'ALL', label: '전체' },
+    { value: 'ORDER', label: '주문' },
+    { value: 'SHIPPING', label: '배송' },
+    { value: 'PRODUCT', label: '상품' },
+    { value: 'OTHER', label: '기타' },
+  ] as const;
+
+  useEffect(() => {
+    let alive = true;
+    setFaqLoading(true);
+    setFaqError('');
+
+    apiGetPublicFaqs(faqType === 'ALL' ? undefined : faqType)
+      .then((items) => {
+        if (alive) setFaqs(items);
+      })
+      .catch((e: { message?: string }) => {
+        if (!alive) return;
+        setFaqs([]);
+        setFaqError(e.message ?? 'FAQ를 불러올 수 없습니다.');
+      })
+      .finally(() => {
+        if (alive) setFaqLoading(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [faqType]);
 
   const handleSubmitQNA = () => {
     if (!form.title.trim() || !form.content.trim()) {
@@ -52,7 +86,6 @@ export default function QnaListPage() {
       <div style={{ padding: '24px', maxWidth: '900px', margin: '0 auto' }}>
         <h1 style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '32px' }}>고객센터</h1>
 
-        {/* Tabs */}
         <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', borderBottom: '1px solid #eee' }}>
           <button
             onClick={() => setTab('faq')}
@@ -82,42 +115,84 @@ export default function QnaListPage() {
               color: tab === 'qna' ? '#333' : '#666',
             }}
           >
-            내 문의
+            1:1 문의
           </button>
         </div>
 
-        {/* FAQ Tab */}
         {tab === 'faq' && (
-          <div style={{ display: 'grid', gap: '12px' }}>
-            {faqs.map((faq) => (
-              <details
-                key={faq.id}
-                style={{
-                  border: '1px solid #eee',
-                  borderRadius: '4px',
-                  padding: '16px',
-                }}
-              >
-                <summary style={{ cursor: 'pointer', fontWeight: '600', userSelect: 'none' }}>
-                  [{QNA_TYPES.find((t) => t.value === faq.type)?.label}] {faq.title}
-                </summary>
-                <div
-                  style={{
-                    marginTop: '16px',
-                    paddingTop: '16px',
-                    borderTop: '1px solid #eee',
-                    color: '#666',
-                    lineHeight: '1.6',
-                  }}
-                >
-                  {faq.content}
+          <div style={{ display: 'grid', gap: '16px' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {faqTypeOptions.map((option) => {
+                const active = faqType === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setFaqType(option.value)}
+                    style={{
+                      padding: '8px 14px',
+                      border: '1px solid',
+                      borderColor: active ? '#111' : '#ddd',
+                      borderRadius: '999px',
+                      background: active ? '#111' : 'white',
+                      color: active ? 'white' : '#555',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      fontWeight: active ? '600' : '500',
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div style={{ display: 'grid', gap: '12px' }}>
+              {faqLoading ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: '#666', border: '1px solid #eee', borderRadius: '4px' }}>
+                  FAQ를 불러오는 중...
                 </div>
-              </details>
-            ))}
+              ) : faqError ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: '#c62828', border: '1px solid #eee', borderRadius: '4px' }}>
+                  {faqError}
+                </div>
+              ) : faqs.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: '#666', border: '1px solid #eee', borderRadius: '4px' }}>
+                  선택한 카테고리에 FAQ가 없습니다.
+                </div>
+              ) : (
+                faqs.map((faq) => (
+                  <details
+                    key={faq.id}
+                    style={{
+                      border: '1px solid #eee',
+                      borderRadius: '4px',
+                      padding: '16px',
+                      background: 'white',
+                    }}
+                  >
+                    <summary style={{ cursor: 'pointer', fontWeight: '600', userSelect: 'none' }}>
+                      [{QNA_TYPES.find((t) => t.value === faq.type)?.label}] {faq.title}
+                    </summary>
+                    <div
+                      style={{
+                        marginTop: '16px',
+                        paddingTop: '16px',
+                        borderTop: '1px solid #eee',
+                        color: '#666',
+                        lineHeight: '1.6',
+                        whiteSpace: 'pre-wrap',
+                      }}
+                    >
+                      {faq.content}
+                    </div>
+                  </details>
+                ))
+              )}
+            </div>
           </div>
         )}
 
-        {/* QNA Tab */}
         {tab === 'qna' && (
           <div>
             <div style={{ marginBottom: '24px' }}>

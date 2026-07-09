@@ -37,7 +37,9 @@ import AdminCouponsPage from '@/pages/admin/AdminCoupons';
 import { AdminCouponBoards } from '@/pages/admin/AdminCouponBoards';
 import AdminMembersPage from '@/pages/admin/AdminMembers';
 import { AdminMemberDetail } from '@/pages/admin/AdminMemberDetail';
+import AdminNoticesPage from '@/pages/admin/AdminNotices';
 import AdminQnaPage from '@/pages/admin/AdminQna';
+import AdminFaqPage from '@/pages/admin/AdminFaq';
 
 import { NotFound } from '@/pages/NotFound';
 
@@ -83,9 +85,13 @@ export default function App() {
           <Route path="/admin/orders" element={<AdminOrdersPage />} />
           <Route path="/admin/orders/:id" element={<AdminOrderDetail />} />
           <Route path="/admin/coupons" element={<AdminCouponsPage />} />
+          <Route path="/admin/coupons/boards" element={<AdminCouponBoards />} />
           <Route path="/admin/coupon-boards" element={<AdminCouponBoards />} />
           <Route path="/admin/members" element={<AdminMembersPage />} />
           <Route path="/admin/members/:id" element={<AdminMemberDetail />} />
+          <Route path="/admin/cs/notices" element={<AdminNoticesPage />} />
+          <Route path="/admin/cs/faq" element={<AdminFaqPage />} />
+          <Route path="/admin/cs/qna" element={<AdminQnaPage />} />
           <Route path="/admin/qna" element={<AdminQnaPage />} />
         </Route>
 

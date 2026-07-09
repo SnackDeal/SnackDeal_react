@@ -41,9 +41,13 @@ export default defineConfig({
       '/admin': apiProxy(),
       '/order': apiProxy(),
       '/product': apiProxy(),
+      '/cs': apiProxy(),
+      '/file': apiProxy(),
       '/shipping-policy': apiProxy(),
       '/chatbot': apiProxy(),
       '/health': apiProxy(),
+      '/event': apiProxy(),
+      '/mypage': apiProxy(),
       // 구글 OAuth2: 진입(/oauth2/authorization/google) + 콜백(/login/oauth2/code/google)
       // 이건 실제 리다이렉트/폼 흐름이라 bypass 없이 그대로 백엔드로 넘긴다.
       '/oauth2/authorization': BACKEND,

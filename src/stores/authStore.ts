@@ -8,7 +8,6 @@ interface AuthState {
   member: Member | null;
   accessToken: string | null;
   refreshToken: string | null;
-  isAdmin: boolean;
   setSession: (result: AuthResult) => void;
   /** 백엔드 응답(MemberDescription + TokenPair)으로 세션 저장 */
   setSessionFromApi: (tokens: { accessToken: string; refreshToken: string }, me: MemberDescription) => void;
@@ -37,30 +36,42 @@ export const useAuthStore = create<AuthState>()(
       member: null,
       accessToken: null,
       refreshToken: null,
-      isAdmin: false,
-      setSession: (result) =>
+      setSession: (result) => {
+        if (result.user.role !== 'USER') {
+          throw new Error('사용자 로그인은 일반 회원 계정만 사용할 수 있습니다.');
+        }
         set({
           member: result.user,
           accessToken: result.access_token,
           refreshToken: result.refresh_token,
-          isAdmin: result.user.role === 'ADMIN',
-        }),
-      setSessionFromApi: (tokens, me) =>
+        });
+      },
+      setSessionFromApi: (tokens, me) => {
+        if (me.role !== 'USER') {
+          throw new Error('사용자 로그인은 일반 회원 계정만 사용할 수 있습니다.');
+        }
         set({
           member: toMember(me),
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken,
-          isAdmin: me.role === 'ADMIN',
-        }),
+        });
+      },
       updateMember: (me) => set({ member: toMember(me) }),
       logout: () =>
         set({
           member: null,
           accessToken: null,
           refreshToken: null,
-          isAdmin: false,
         }),
     }),
-    { name: 'snackdeal-auth', storage: createJSONStorage(() => sessionStorage) }
+    {
+      name: 'snackdeal-auth',
+      storage: createJSONStorage(() => sessionStorage),
+      partialize: (state) => ({
+        member: state.member,
+        accessToken: state.accessToken,
+        refreshToken: state.refreshToken,
+      }),
+    }
   )
 );

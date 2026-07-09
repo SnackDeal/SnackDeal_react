@@ -82,6 +82,7 @@ export default function CartPage() {
     }
 
     sessionStorage.setItem('checkout-product-ids', JSON.stringify(selectedIds));
+    sessionStorage.removeItem('checkout-direct-items');
     navigate('/checkout');
   };
 

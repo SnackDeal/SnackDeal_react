@@ -3,8 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Package, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { apiGetProducts } from '@/lib/api';
-import { useCouponStore, type CouponBoard } from '@/stores/couponStore';
+import { apiGetEventCouponBoards, apiGetProducts, type EventCouponBoard } from '@/lib/api';
 import type { Product } from '@/lib/mockProducts';
 
 const TOP_LIMIT = 8;
@@ -18,10 +17,8 @@ function isRenderableImageUrl(url: string) {
 export function Home() {
   const [topProducts, setTopProducts] = useState<Product[]>([]);
   const [categorySections, setCategorySections] = useState<Array<{ id: number; name: string; products: Product[] }>>([]);
+  const [eventBoards, setEventBoards] = useState<EventCouponBoard[]>([]);
   const [refreshToken, setRefreshToken] = useState(0);
-  const eventBoards = useCouponStore((s) => s.getCouponBoards()).filter(
-    (b) => b.is_active
-  );
 
   useEffect(() => {
     apiGetProducts({ sort: 'latest', page: 1, size: 50 })
@@ -52,6 +49,20 @@ export function Home() {
         setCategorySections([]);
       });
   }, [refreshToken]);
+
+  useEffect(() => {
+    apiGetEventCouponBoards()
+      .then((rows) => {
+        const now = new Date();
+        const active = rows.filter((board) => {
+          const start = new Date(board.startAt);
+          const end = new Date(board.endAt);
+          return start <= now && now <= end;
+        });
+        setEventBoards(active);
+      })
+      .catch(() => setEventBoards([]));
+  }, []);
 
   useEffect(() => {
     const refresh = () => setRefreshToken((value) => value + 1);
@@ -231,7 +242,7 @@ function ProductCard({ product }: { product: Product }) {
   );
 }
 
-function EventBanner({ boards }: { boards: CouponBoard[] }) {
+function EventBanner({ boards }: { boards: EventCouponBoard[] }) {
   return (
     <section className="flex flex-col gap-5">
       <div className="flex items-end justify-between">
@@ -264,7 +275,7 @@ function EventBanner({ boards }: { boards: CouponBoard[] }) {
               <h3 className="text-lg font-bold leading-tight">{board.title}</h3>
               <p className="line-clamp-2 text-sm text-white/85">{board.content}</p>
               <span className="mt-auto pt-3 text-xs text-white/70">
-                {formatPeriod(board.start_at, board.end_at)}
+                {formatPeriod(board.startAt, board.endAt)}
               </span>
             </div>
             <div

@@ -28,7 +28,7 @@ export function OrderDetail() {
 
   useEffect(() => {
     if (!accessToken) {
-      navigate('/login');
+      navigate('/', { replace: true });
       return;
     }
     if (!id) return;

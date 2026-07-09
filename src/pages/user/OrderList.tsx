@@ -27,7 +27,7 @@ export function OrderList() {
 
   useEffect(() => {
     if (!accessToken) {
-      navigate('/login');
+      navigate('/', { replace: true });
       return;
     }
 
