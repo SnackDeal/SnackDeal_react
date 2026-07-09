@@ -9,7 +9,6 @@ import {
   User,
   Search,
   LogOut,
-  ShieldCheck,
   Menu,
   X,
 } from 'lucide-react';
