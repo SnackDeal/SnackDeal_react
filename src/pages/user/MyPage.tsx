@@ -63,10 +63,9 @@ export default function MyPage() {
   }
 
   const recentOrders = orders.slice(0, 5);
-  const now = Date.now();
-  const activeCoupons = myCoupons.filter((c) => c.status === 'ACTIVE' && new Date(c.validUntil).getTime() >= now);
+  const activeCoupons = myCoupons.filter((c) => c.status === 'ACTIVE');
   const usedCoupons = myCoupons.filter((c) => c.status === 'USED');
-  const expiredCoupons = myCoupons.filter((c) => c.status === 'EXPIRED' || (c.status === 'ACTIVE' && new Date(c.validUntil).getTime() < now));
+  const expiredCoupons = myCoupons.filter((c) => c.status === 'EXPIRED');
   const totalOrderAmount = orders.reduce((sum, o) => sum + o.finalAmount, 0);
   const totalOrderCount = orders.length;
 
@@ -225,7 +224,9 @@ export default function MyPage() {
                             <div style={{ fontSize: '12px', color: '#666' }}>
                               {c.discountType === 'FIXED' ? `₩${c.discountValue.toLocaleString()}` : `${c.discountValue}%`} 할인
                             </div>
-                            <div style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>~ {new Date(c.validUntil).toLocaleDateString()}</div>
+                            <div style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>
+                              {c.validUntil ? `~ ${new Date(c.validUntil).toLocaleDateString()}` : '기한 없음'}
+                            </div>
                           </div>
                           <div style={{ fontSize: '12px', color: '#666' }}>최소 ₩{c.minOrderPrice.toLocaleString()}</div>
                         </div>

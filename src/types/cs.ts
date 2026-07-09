@@ -3,6 +3,19 @@ import type { ID, ISODate } from './common';
 // 고객센터 도메인 — notice / faq / qna / qna_answer
 export type QnaType = 'ORDER' | 'SHIPPING' | 'PRODUCT' | 'OTHER';
 
+export interface NoticeSummaryResponse {
+  id: ID;
+  title: string;
+  pinned?: boolean;
+  is_pinned?: boolean;
+  createdAt?: ISODate;
+  created_at?: ISODate;
+}
+
+export interface NoticeResponse extends NoticeSummaryResponse {
+  content: string;
+}
+
 export interface Notice {
   id: ID;
   title: string;

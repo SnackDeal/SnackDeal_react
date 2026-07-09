@@ -7,7 +7,7 @@
 // VITE_API_URL 이 설정되면 해당 주소로, 비어있으면 Vite 프록시(상대경로) 사용
 import { formatPhoneNumberForStorage } from '@/lib/phone';
 import type { Product } from '@/lib/mockProducts';
-import type { QnaType } from '@/types';
+import type { NoticeResponse, NoticeSummaryResponse, QnaType } from '@/types';
 
 const configuredBaseUrl = ((import.meta.env.VITE_API_URL as string | undefined) ?? '').trim();
 const configuredChatbotBaseUrl = ((import.meta.env.VITE_CHATBOT_API_URL as string | undefined) ?? '').trim();
@@ -723,12 +723,57 @@ export async function apiUpdateMemberStatus(
 
 export interface MyCoupon {
   userCouponId: number;
+  couponId: number;
   couponName: string;
   discountType: 'FIXED' | 'PERCENT';
   discountValue: number;
   minOrderPrice: number;
-  validUntil: string;
+  validUntil: string | null;
+  issueType: 'EVENT' | 'SIGNIN';
   status: 'ACTIVE' | 'USED' | 'EXPIRED';
+  issuedAt: string;
+  usedAt: string | null;
+}
+
+type MyCouponResponse = {
+  userCouponId?: number;
+  user_coupon_id?: number;
+  couponId?: number;
+  coupon_id?: number;
+  couponName?: string;
+  coupon_name?: string;
+  name?: string;
+  discountType?: 'FIXED' | 'PERCENT';
+  discount_type?: 'FIXED' | 'PERCENT';
+  discountValue?: number;
+  discount_value?: number;
+  minOrderPrice?: number;
+  min_order_price?: number;
+  validUntil?: string | null;
+  valid_until?: string | null;
+  issueType?: 'EVENT' | 'SIGNIN';
+  issue_type?: 'EVENT' | 'SIGNIN';
+  status?: 'ACTIVE' | 'USED' | 'EXPIRED';
+  issuedAt?: string;
+  issued_at?: string;
+  usedAt?: string | null;
+  used_at?: string | null;
+};
+
+function mapMyCoupon(item: MyCouponResponse): MyCoupon {
+  return {
+    userCouponId: item.userCouponId ?? item.user_coupon_id ?? 0,
+    couponId: item.couponId ?? item.coupon_id ?? 0,
+    couponName: item.couponName ?? item.coupon_name ?? item.name ?? '',
+    discountType: item.discountType ?? item.discount_type ?? 'FIXED',
+    discountValue: item.discountValue ?? item.discount_value ?? 0,
+    minOrderPrice: item.minOrderPrice ?? item.min_order_price ?? 0,
+    validUntil: item.validUntil ?? item.valid_until ?? null,
+    issueType: item.issueType ?? item.issue_type ?? 'EVENT',
+    status: item.status ?? 'ACTIVE',
+    issuedAt: item.issuedAt ?? item.issued_at ?? '',
+    usedAt: item.usedAt ?? item.used_at ?? null,
+  };
 }
 
 /** GET /mypage/coupon 🔒 */
@@ -737,10 +782,10 @@ export async function apiGetMyCoupons(
   status?: 'ACTIVE' | 'USED' | 'EXPIRED'
 ): Promise<MyCoupon[]> {
   const query = status ? `?status=${status}` : '';
-  const data = await request<MyCoupon[] | { coupons?: MyCoupon[] } | null>(`/mypage/coupon${query}`, {}, token);
+  const data = await request<MyCouponResponse[] | { coupons?: MyCouponResponse[] } | null>(`/mypage/coupon${query}`, {}, token);
   if (!data) return [];
-  if (Array.isArray(data)) return data;
-  return data.coupons ?? [];
+  const list = Array.isArray(data) ? data : data.coupons ?? [];
+  return list.map(mapMyCoupon);
 }
 
 // ─── 이벤트 쿠폰 게시판 (사용자 공개) ────────────────────────────────────────
@@ -754,8 +799,8 @@ export interface EventCoupon {
   discountValue: number;
   minOrderPrice: number;
   validFrom: string;
-  validUntil: string;
-  remainingQuantity: number;
+  validUntil: string | null;
+  remainingQuantity: number | null;
   state: EventCouponState;
   alreadyDownloaded: boolean;
 }
@@ -766,7 +811,7 @@ export interface EventCouponBoard {
   content: string;
   thumbnailUrl: string | null;
   startAt: string;
-  endAt: string;
+  endAt: string | null;
   coupons?: EventCoupon[];
 }
 
@@ -781,10 +826,10 @@ type EventCouponResponse = {
   min_order_price?: number;
   validFrom?: string;
   valid_from?: string;
-  validUntil?: string;
+  validUntil?: string | null;
   valid_until?: string;
-  remainingQuantity?: number;
-  remaining_quantity?: number;
+  remainingQuantity?: number | null;
+  remaining_quantity?: number | null;
   state?: EventCouponState;
   alreadyDownloaded?: boolean;
   already_downloaded?: boolean;
@@ -793,13 +838,13 @@ type EventCouponResponse = {
 type EventCouponBoardResponse = {
   id: number;
   title: string;
-  content: string;
+  content?: string;
   thumbnailUrl?: string | null;
   thumbnail_url?: string | null;
   startAt?: string;
   start_at?: string;
-  endAt?: string;
-  end_at?: string;
+  endAt?: string | null;
+  end_at?: string | null;
   coupons?: EventCouponResponse[];
 };
 
@@ -817,8 +862,8 @@ function mapEventCoupon(item: EventCouponResponse): EventCoupon {
     discountValue: item.discountValue ?? item.discount_value ?? 0,
     minOrderPrice: item.minOrderPrice ?? item.min_order_price ?? 0,
     validFrom: item.validFrom ?? item.valid_from ?? '',
-    validUntil: item.validUntil ?? item.valid_until ?? '',
-    remainingQuantity: item.remainingQuantity ?? item.remaining_quantity ?? 0,
+    validUntil: item.validUntil ?? item.valid_until ?? null,
+    remainingQuantity: item.remainingQuantity ?? item.remaining_quantity ?? null,
     state: item.state ?? 'open',
     alreadyDownloaded: item.alreadyDownloaded ?? item.already_downloaded ?? false,
   };
@@ -828,10 +873,10 @@ function mapEventCouponBoard(item: EventCouponBoardResponse, coupons?: EventCoup
   return {
     id: item.id,
     title: item.title,
-    content: item.content,
+    content: item.content ?? '',
     thumbnailUrl: item.thumbnailUrl ?? item.thumbnail_url ?? null,
     startAt: item.startAt ?? item.start_at ?? '',
-    endAt: item.endAt ?? item.end_at ?? '',
+    endAt: item.endAt ?? item.end_at ?? null,
     coupons: (coupons ?? item.coupons)?.map(mapEventCoupon),
   };
 }
@@ -853,9 +898,11 @@ export async function apiGetEventCouponBoard(boardId: number, token?: string | n
 }
 
 /** POST /event/coupon/{couponId}/download 🔒 */
-export async function apiDownloadEventCoupon(token: string, couponId: number): Promise<MyCoupon | null> {
-  const data = await request<MyCoupon | null>(`/event/coupon/${couponId}/download`, { method: 'POST' }, token);
-  return data;
+export async function apiDownloadEventCoupon(
+  token: string,
+  couponId: number
+): Promise<{ userCouponId: number; couponId: number; name: string; status: string; issuedAt: string } | null> {
+  return request(`/event/coupon/${couponId}/download`, { method: 'POST' }, token);
 }
 
 // ─── 주문 (사용자) ────────────────────────────────────────────────────────────
@@ -1219,6 +1266,169 @@ export async function apiGetPublicFaqs(type?: QnaType): Promise<PublicFaq[]> {
   return list.map(mapPublicFaq);
 }
 
+export interface QnaSummary {
+  id: number;
+  type: QnaType;
+  title: string;
+  answered: boolean;
+  createdAt: string;
+}
+
+export interface QnaDetail extends QnaSummary {
+  content: string;
+  attachmentUrl: string | null;
+  answerContent: string | null;
+  answeredAt: string | null;
+}
+
+export interface QnaUpsertPayload {
+  type: QnaType;
+  title: string;
+  content: string;
+  attachmentUrl?: string | null;
+}
+
+export interface QnaAnswerPayload {
+  content: string;
+}
+
+export interface AdminQnaAiSummaryPayload {
+  qna_id: number;
+  title: string;
+  content: string;
+  type: QnaType;
+}
+
+export interface AdminQnaAiSummaryResponse {
+  summary: string;
+  suggestedAnswer: string;
+}
+
+type QnaSummaryResponse = {
+  id: number;
+  type: QnaType;
+  title: string;
+  answered: boolean;
+  createdAt?: string;
+  created_at?: string;
+};
+
+type QnaDetailResponse = QnaSummaryResponse & {
+  content: string;
+  attachmentUrl?: string | null;
+  attachment_url?: string | null;
+  answerContent?: string | null;
+  answer_content?: string | null;
+  answeredAt?: string | null;
+  answered_at?: string | null;
+};
+
+function mapQnaSummary(item: QnaSummaryResponse): QnaSummary {
+  return {
+    id: item.id,
+    type: item.type,
+    title: item.title,
+    answered: item.answered,
+    createdAt: item.createdAt ?? item.created_at ?? '',
+  };
+}
+
+function mapQnaDetail(item: QnaDetailResponse): QnaDetail {
+  return {
+    ...mapQnaSummary(item),
+    content: item.content,
+    attachmentUrl: item.attachmentUrl ?? item.attachment_url ?? null,
+    answerContent: item.answerContent ?? item.answer_content ?? null,
+    answeredAt: item.answeredAt ?? item.answered_at ?? null,
+  };
+}
+
+/** GET /cs/qna/list */
+export async function apiGetMyQnas(token: string): Promise<QnaSummary[]> {
+  const data = await request<QnaSummaryResponse[] | { items?: QnaSummaryResponse[] } | null>('/cs/qna/list', {}, token);
+  const list = !data ? [] : Array.isArray(data) ? data : data.items ?? [];
+  return list.map(mapQnaSummary);
+}
+
+/** GET /cs/qna/{id} */
+export async function apiGetMyQna(token: string, id: number): Promise<QnaDetail> {
+  const data = await request<QnaDetailResponse>(`/cs/qna/${id}`, {}, token);
+  return mapQnaDetail(data);
+}
+
+/** POST /cs/qna */
+export async function apiCreateMyQna(token: string, payload: QnaUpsertPayload): Promise<QnaDetail> {
+  const data = await request<QnaDetailResponse>('/cs/qna', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, token);
+  return mapQnaDetail(data);
+}
+
+/** PATCH /cs/qna/{id} */
+export async function apiUpdateMyQna(token: string, id: number, payload: QnaUpsertPayload): Promise<QnaDetail> {
+  const data = await request<QnaDetailResponse>(`/cs/qna/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }, token);
+  return mapQnaDetail(data);
+}
+
+/** DELETE /cs/qna/{id} */
+export async function apiDeleteMyQna(token: string, id: number): Promise<null> {
+  return request(`/cs/qna/${id}`, { method: 'DELETE' }, token);
+}
+
+/** GET /admin/cs/qna */
+export async function apiGetAdminQnas(token: string): Promise<QnaDetail[]> {
+  const data = await request<QnaDetailResponse[] | { items?: QnaDetailResponse[] } | null>('/admin/cs/qna', {}, token);
+  const list = !data ? [] : Array.isArray(data) ? data : data.items ?? [];
+  return list.map(mapQnaDetail).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+/** GET /admin/cs/qna/{id} */
+export async function apiGetAdminQna(token: string, id: number): Promise<QnaDetail> {
+  const data = await request<QnaDetailResponse>(`/admin/cs/qna/${id}`, {}, token);
+  return mapQnaDetail(data);
+}
+
+/** POST /admin/cs/qna/{id}/answer */
+export async function apiCreateAdminQnaAnswer(
+  token: string,
+  id: number,
+  payload: QnaAnswerPayload
+): Promise<QnaDetail> {
+  const data = await request<QnaDetailResponse>(`/admin/cs/qna/${id}/answer`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, token);
+  return mapQnaDetail(data);
+}
+
+/** POST /admin/qna/{qna_id}/ai-summary */
+export async function apiCreateAdminQnaAiSummary(
+  token: string,
+  qnaId: number,
+  payload: Omit<AdminQnaAiSummaryPayload, 'qna_id'>
+): Promise<AdminQnaAiSummaryResponse> {
+  const data = await request<{ summary: string; suggested_answer?: string; suggestedAnswer?: string }>(
+    `/admin/qna/${qnaId}/ai-summary`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        qna_id: qnaId,
+        ...payload,
+      }),
+    },
+    token
+  );
+
+  return {
+    summary: data.summary,
+    suggestedAnswer: data.suggested_answer ?? data.suggestedAnswer ?? '',
+  };
+}
+
 // ─── 관리자 쿠폰 ──────────────────────────────────────────────────────────────
 
 export type AdminCouponDiscountType = 'FIXED' | 'PERCENT';
@@ -1246,8 +1456,10 @@ export interface AdminCoupon {
   validUntil: string;
   totalQuantity: number;
   issuedQuantity: number;
+  usedCount: number;
   issueType: AdminCouponIssueType;
   isActive: boolean;
+  status?: 'ACTIVE' | 'EXPIRED' | 'STOPPED';
   couponBoardId: number | null;
   couponBoardTitle?: string | null;
 }
@@ -1256,22 +1468,28 @@ export interface AdminCouponBoardPayload {
   title: string;
   content: string;
   thumbnailUrl?: string | null;
-  isActive: boolean;
+  isActive?: boolean | null;
   startAt: string;
-  endAt: string;
+  endAt?: string | null;
 }
 
-export interface AdminCouponPayload {
+export interface AdminCouponCreatePayload {
   name: string;
   discountType: AdminCouponDiscountType;
   discountValue: number;
   minOrderPrice: number;
   validFrom: string;
-  validUntil: string;
+  validUntil?: string | null;
   totalQuantity: number;
   issueType: AdminCouponIssueType;
-  isActive: boolean;
+  isActive?: boolean | null;
   couponBoardId?: number | null;
+}
+
+export interface AdminCouponUpdatePayload {
+  name?: string;
+  validUntil?: string | null;
+  totalQuantity?: number | null;
 }
 
 type AdminCouponResponse = AdminCoupon & {
@@ -1282,9 +1500,11 @@ type AdminCouponResponse = AdminCoupon & {
   valid_until?: string;
   total_quantity?: number;
   issued_quantity?: number;
+  usedCount?: number;
+  used_count?: number;
   issue_type?: AdminCouponIssueType;
   is_active?: boolean;
-  status?: 'ACTIVE' | 'INACTIVE' | 'DELETED';
+  status?: 'ACTIVE' | 'EXPIRED' | 'STOPPED';
   coupon_board_id?: number | null;
   coupon_board_title?: string | null;
 };
@@ -1318,8 +1538,10 @@ function mapAdminCoupon(item: AdminCouponResponse): AdminCoupon {
     validUntil: item.validUntil ?? item.valid_until ?? '',
     totalQuantity: item.totalQuantity ?? item.total_quantity ?? 0,
     issuedQuantity: item.issuedQuantity ?? item.issued_quantity ?? 0,
+    usedCount: item.usedCount ?? item.used_count ?? 0,
     issueType: item.issueType ?? item.issue_type ?? 'EVENT',
-    isActive: item.isActive ?? item.is_active ?? (item.status ? item.status === 'ACTIVE' : false),
+    isActive: item.isActive ?? item.is_active ?? (item.status ? item.status !== 'STOPPED' : false),
+    status: item.status,
     couponBoardId: item.couponBoardId ?? item.coupon_board_id ?? null,
     couponBoardTitle: item.couponBoardTitle ?? item.coupon_board_title ?? null,
   };
@@ -1350,7 +1572,7 @@ export async function apiGetAdminCoupons(token: string): Promise<AdminCoupon[]> 
 /** POST /admin/coupon 👑 */
 export async function apiCreateAdminCoupon(
   token: string,
-  payload: AdminCouponPayload
+  payload: AdminCouponCreatePayload
 ): Promise<AdminCoupon> {
   const data = await request<AdminCouponResponse>('/admin/coupon', {
     method: 'POST',
@@ -1363,7 +1585,7 @@ export async function apiCreateAdminCoupon(
 export async function apiUpdateAdminCoupon(
   token: string,
   id: number,
-  payload: AdminCouponPayload
+  payload: AdminCouponUpdatePayload
 ): Promise<AdminCoupon> {
   const data = await request<AdminCouponResponse>(`/admin/coupon/${id}`, {
     method: 'PUT',
@@ -1400,7 +1622,7 @@ export async function apiCreateAdminCouponBoard(
 ): Promise<AdminCouponBoard> {
   const data = await request<AdminCouponBoardResponse>('/admin/coupon-board', {
     method: 'POST',
-    body: JSON.stringify({ ...payload, status: payload.isActive ? 'ACTIVE' : 'INACTIVE' }),
+    body: JSON.stringify(payload),
   }, token);
   return mapAdminCouponBoard(data);
 }
@@ -1413,7 +1635,7 @@ export async function apiUpdateAdminCouponBoard(
 ): Promise<AdminCouponBoard> {
   const data = await request<AdminCouponBoardResponse>(`/admin/coupon-board/${id}`, {
     method: 'PUT',
-    body: JSON.stringify({ ...payload, status: payload.isActive ? 'ACTIVE' : 'INACTIVE' }),
+    body: JSON.stringify(payload),
   }, token);
   return mapAdminCouponBoard(data);
 }
@@ -1421,19 +1643,6 @@ export async function apiUpdateAdminCouponBoard(
 /** DELETE /admin/coupon-board/{id} 👑 */
 export async function apiDeleteAdminCouponBoard(token: string, id: number): Promise<void> {
   await request<null>(`/admin/coupon-board/${id}`, { method: 'DELETE' }, token);
-}
-
-/** PATCH /admin/coupon-board/{id}/status 👑 */
-export async function apiUpdateAdminCouponBoardStatus(
-  token: string,
-  id: number,
-  isActive: boolean
-): Promise<AdminCouponBoard> {
-  const data = await request<AdminCouponBoardResponse>(`/admin/coupon-board/${id}/status`, {
-    method: 'PATCH',
-    body: JSON.stringify({ isActive, status: isActive ? 'ACTIVE' : 'INACTIVE' }),
-  }, token);
-  return mapAdminCouponBoard(data);
 }
 
 // ─── 배송비 정책 ──────────────────────────────────────────────────────────────
@@ -1524,4 +1733,105 @@ export async function apiUpdateShippingPolicy(
     method: 'PATCH',
     body: JSON.stringify(payload),
   }, token);
+}
+export interface NoticeSummary {
+  id: number;
+  title: string;
+  pinned: boolean;
+  createdAt: string;
+}
+
+export interface NoticeDetail extends NoticeSummary {
+  content: string;
+}
+
+export interface AdminNoticePayload {
+  title: string;
+  content: string;
+  pinned: boolean;
+}
+
+export interface AdminNoticeCreatePayload extends AdminNoticePayload {}
+export interface AdminNoticeUpdatePayload extends AdminNoticePayload {}
+
+function mapNoticeSummary(item: NoticeSummaryResponse): NoticeSummary {
+  return {
+    id: item.id,
+    title: item.title,
+    pinned: item.pinned ?? item.is_pinned ?? false,
+    createdAt: item.createdAt ?? item.created_at ?? '',
+  };
+}
+
+function mapNoticeDetail(item: NoticeResponse): NoticeDetail {
+  return {
+    ...mapNoticeSummary(item),
+    content: item.content,
+  };
+}
+
+/** GET /cs/notice/list */
+export async function apiGetPublicNotices(): Promise<NoticeSummary[]> {
+  const data = await request<
+    NoticeSummaryResponse[] | { items?: NoticeSummaryResponse[]; content?: NoticeSummaryResponse[]; notices?: NoticeSummaryResponse[] } | null
+  >(
+    '/cs/notice/list'
+  );
+  const list = !data ? [] : Array.isArray(data) ? data : data.items ?? data.content ?? data.notices ?? [];
+  return list.map(mapNoticeSummary);
+}
+
+/** GET /cs/notice/{id} */
+export async function apiGetPublicNotice(id: number): Promise<NoticeDetail> {
+  const data = await request<NoticeResponse>(`/cs/notice/${id}`);
+  return mapNoticeDetail(data);
+}
+
+/** GET /admin/cs/notice */
+export async function apiGetAdminNotices(token: string): Promise<NoticeSummary[]> {
+  const data = await request<
+    NoticeSummaryResponse[] | { items?: NoticeSummaryResponse[]; content?: NoticeSummaryResponse[]; notices?: NoticeSummaryResponse[] } | null
+  >(
+    '/admin/cs/notice',
+    {},
+    token
+  );
+  const list = !data ? [] : Array.isArray(data) ? data : data.items ?? data.content ?? data.notices ?? [];
+  return list.map(mapNoticeSummary);
+}
+
+/** GET /admin/cs/notice/{id} */
+export async function apiGetAdminNotice(token: string, id: number): Promise<NoticeDetail> {
+  const data = await request<NoticeResponse>(`/admin/cs/notice/${id}`, {}, token);
+  return mapNoticeDetail(data);
+}
+
+/** POST /admin/cs/notice */
+export async function apiCreateAdminNotice(
+  token: string,
+  payload: AdminNoticeCreatePayload
+): Promise<NoticeDetail> {
+  const data = await request<NoticeResponse>('/admin/cs/notice', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, token);
+  return mapNoticeDetail(data);
+}
+
+/** PUT /admin/cs/notice/{id} */
+export async function apiUpdateAdminNotice(
+  token: string,
+  id: number,
+  payload: AdminNoticeUpdatePayload
+): Promise<NoticeDetail> {
+  const data = await request<NoticeResponse>(`/admin/cs/notice/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  }, token);
+  return mapNoticeDetail(data);
+}
+
+/** DELETE /admin/cs/notice/{id} */
+export async function apiDeleteAdminNotice(token: string, id: number): Promise<null> {
+  return request(`/admin/cs/notice/${id}`, { method: 'DELETE' }, token);
 }

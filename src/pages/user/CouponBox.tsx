@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import {
   apiDownloadEventCoupon,
+  apiGetEventCouponBoard,
   apiGetEventCouponBoards,
+  type ApiError,
   type EventCoupon,
   type EventCouponBoard,
 } from '@/lib/api';
@@ -13,7 +15,7 @@ import { Toast } from '@/components/ui/Toast';
 const COUPON_STATE_LABEL: Record<EventCoupon['state'], string> = {
   open: '받기',
   upcoming: '오픈 예정',
-  soldout: '품절',
+  soldout: '소진',
   closed: '종료',
 };
 
@@ -29,9 +31,22 @@ function CouponBoxPage() {
   const loadBoards = () => {
     setLoading(true);
     setError(null);
+
     return apiGetEventCouponBoards(accessToken)
-      .then(setBoards)
-      .catch((e: { message?: string }) => setError(e?.message ?? '이벤트를 불러올 수 없습니다.'))
+      .then(async (boardRows) => {
+        const detailRows = await Promise.allSettled(
+          boardRows.map((board) => apiGetEventCouponBoard(board.id, accessToken))
+        );
+
+        setBoards(
+          boardRows.map((board, index) =>
+            detailRows[index]?.status === 'fulfilled' ? detailRows[index].value : board
+          )
+        );
+      })
+      .catch((e: { message?: string }) => {
+        setError(e?.message ?? '이벤트를 불러오지 못했습니다.');
+      })
       .finally(() => setLoading(false));
   };
 
@@ -43,25 +58,27 @@ function CouponBoxPage() {
   const handleDownload = async (coupon: EventCoupon) => {
     if (!accessToken) {
       setToast({ message: '로그인이 필요합니다.', type: 'error' });
-      setTimeout(() => navigate('/'), 1200);
+      setTimeout(() => navigate('/login'), 1200);
       return;
     }
+
     setIssuingId(coupon.id);
     try {
       await apiDownloadEventCoupon(accessToken, coupon.id);
       setToast({ message: '쿠폰이 발급되었습니다.', type: 'success' });
       await loadBoards();
     } catch (e) {
-      const message = (e as { message?: string }).message ?? '쿠폰 발급에 실패했습니다.';
-      setToast({ message, type: 'error' });
+      const apiError = e as ApiError;
+      if (['CO003', 'CO004', 'CO005', 'CO006', 'CO007'].includes(apiError.code)) {
+        await loadBoards();
+      }
+      setToast({ message: apiError.message ?? '쿠폰 발급에 실패했습니다.', type: 'error' });
     } finally {
       setIssuingId(null);
     }
   };
 
-  const allCoupons = boards.flatMap((board) =>
-    (board.coupons ?? []).map((coupon) => ({ board, coupon }))
-  );
+  const allCoupons = boards.flatMap((board) => (board.coupons ?? []).map((coupon) => ({ board, coupon })));
 
   return (
     <>
@@ -72,7 +89,16 @@ function CouponBoxPage() {
 
         {loading && <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>로딩 중...</div>}
         {error && !loading && (
-          <div style={{ padding: '12px 16px', marginBottom: '16px', background: '#ffebee', color: '#c62828', borderRadius: '4px', fontSize: '13px' }}>
+          <div
+            style={{
+              padding: '12px 16px',
+              marginBottom: '16px',
+              background: '#ffebee',
+              color: '#c62828',
+              borderRadius: '4px',
+              fontSize: '13px',
+            }}
+          >
             {error}
           </div>
         )}
@@ -113,12 +139,21 @@ function CouponBoxPage() {
                       )}
                       <div style={{ padding: '16px' }}>
                         <h3 style={{ fontWeight: '600', marginBottom: '8px', minHeight: '40px' }}>{board.title}</h3>
-                        <p style={{ fontSize: '12px', color: '#666', marginBottom: '12px', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                        <p
+                          style={{
+                            fontSize: '12px',
+                            color: '#666',
+                            marginBottom: '12px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                          }}
+                        >
                           {board.content}
                         </p>
-                        <div style={{ fontSize: '11px', color: '#999' }}>
-                          {new Date(board.startAt).toLocaleDateString()} ~ {new Date(board.endAt).toLocaleDateString()}
-                        </div>
+                        <div style={{ fontSize: '11px', color: '#999' }}>{formatDateRange(board.startAt, board.endAt)}</div>
                       </div>
                     </div>
                   ))}
@@ -139,8 +174,9 @@ function CouponBoxPage() {
                     const buttonLabel = isBusy
                       ? '발급 중...'
                       : coupon.alreadyDownloaded
-                        ? '발급 완료'
+                        ? '받기 완료'
                         : COUPON_STATE_LABEL[coupon.state];
+
                     return (
                       <div
                         key={`${board.id}-${coupon.id}`}
@@ -158,7 +194,7 @@ function CouponBoxPage() {
                         <div>
                           <div style={{ fontSize: '11px', color: '#999', marginBottom: '4px' }}>{board.title}</div>
                           <h4 style={{ fontWeight: '600', marginBottom: '8px' }}>{coupon.name}</h4>
-                          <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#666' }}>
+                          <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#666', flexWrap: 'wrap' }}>
                             <span>
                               {coupon.discountType === 'FIXED'
                                 ? `₩${coupon.discountValue.toLocaleString()}`
@@ -166,10 +202,10 @@ function CouponBoxPage() {
                               할인
                             </span>
                             <span>최소 ₩{coupon.minOrderPrice.toLocaleString()}</span>
-                            <span>~{new Date(coupon.validUntil).toLocaleDateString()}</span>
+                            <span>{formatCouponValidUntil(coupon.validUntil)}</span>
                           </div>
                           <div style={{ fontSize: '11px', color: '#999', marginTop: '8px' }}>
-                            남은 수량: {coupon.remainingQuantity.toLocaleString()}장
+                            남은 수량: {formatRemainingQuantity(coupon.remainingQuantity)}
                           </div>
                         </div>
                         <div>
@@ -192,6 +228,20 @@ function CouponBoxPage() {
       </div>
     </>
   );
+}
+
+function formatDateRange(startAt: string, endAt: string | null) {
+  const start = new Date(startAt).toLocaleDateString();
+  const end = endAt ? new Date(endAt).toLocaleDateString() : '상시';
+  return `${start} ~ ${end}`;
+}
+
+function formatCouponValidUntil(validUntil: string | null) {
+  return validUntil ? `~${new Date(validUntil).toLocaleDateString()}` : '기한 없음';
+}
+
+function formatRemainingQuantity(remainingQuantity: number | null) {
+  return remainingQuantity === null ? '무제한' : `${remainingQuantity.toLocaleString()}장`;
 }
 
 export default CouponBoxPage;

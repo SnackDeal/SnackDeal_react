@@ -28,6 +28,10 @@ const csNavItems = [
   { to: '/cs/qna', label: '문의게시판' },
 ];
 
+const customerCenterNavItems = csNavItems.map((item) =>
+  item.to === '/cs/notice' ? { ...item, label: '공지사항' } : item.to === '/cs/qna' ? { ...item, label: '문의게시판' } : item
+);
+
 interface ChatMessage {
   role: 'bot' | 'user';
   content: string;
@@ -60,7 +64,7 @@ export function UserLayout() {
     }
     logout();
     setIsMobileMenuOpen(false);
-    navigate('/login', { replace: true });
+    navigate('/', { replace: true });
   };
 
   const handleScrollTop = () => {
@@ -134,7 +138,7 @@ export function UserLayout() {
           </NavLink>
         ))}
         <div className="px-3 pb-1 pt-3 text-xs font-semibold text-gray-400">고객센터</div>
-        {csNavItems.map((item) => (
+        {customerCenterNavItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
@@ -223,7 +227,7 @@ export function UserLayout() {
               </button>
               <div className="invisible absolute left-1/2 top-full z-50 w-36 -translate-x-1/2 pt-3 opacity-0 transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
                 <div className="rounded-lg border border-gray-200 bg-white p-1 shadow-lg">
-                  {csNavItems.map((item) => (
+                  {customerCenterNavItems.map((item) => (
                     <NavLink
                       key={item.to}
                       to={item.to}

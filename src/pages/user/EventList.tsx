@@ -5,6 +5,7 @@ import {
   apiDownloadEventCoupon,
   apiGetEventCouponBoard,
   apiGetEventCouponBoards,
+  type ApiError,
   type EventCoupon,
   type EventCouponBoard,
 } from '@/lib/api';
@@ -14,7 +15,7 @@ import { Toast } from '@/components/ui/Toast';
 const COUPON_STATE_LABEL: Record<EventCoupon['state'], string> = {
   open: '쿠폰 받기',
   upcoming: '오픈 예정',
-  soldout: '품절',
+  soldout: '소진',
   closed: '종료',
 };
 
@@ -32,17 +33,24 @@ export default function EventListPage() {
   useEffect(() => {
     setLoading(true);
     setError(null);
+
     apiGetEventCouponBoards(accessToken)
       .then((rows) => {
         setBoards(rows);
-        if (rows.length > 0) setSelectedBoardId((prev) => prev ?? rows[0].id);
+        if (rows.length > 0) {
+          setSelectedBoardId((prev) => prev ?? rows[0].id);
+        }
       })
-      .catch((e: { message?: string }) => setError(e?.message ?? '이벤트를 불러올 수 없습니다.'))
+      .catch((e: { message?: string }) => setError(e?.message ?? '이벤트를 불러오지 못했습니다.'))
       .finally(() => setLoading(false));
   }, [accessToken]);
 
   useEffect(() => {
-    if (selectedBoardId === null) { setDetail(null); return; }
+    if (selectedBoardId === null) {
+      setDetail(null);
+      return;
+    }
+
     apiGetEventCouponBoard(selectedBoardId, accessToken)
       .then(setDetail)
       .catch(() => setDetail(null));
@@ -62,14 +70,18 @@ export default function EventListPage() {
       setTimeout(() => navigate('/login'), 1200);
       return;
     }
+
     setIssuingId(coupon.id);
     try {
       await apiDownloadEventCoupon(accessToken, coupon.id);
       setToast({ message: '쿠폰이 발급되었습니다.', type: 'success' });
       await refreshDetail();
     } catch (e) {
-      const message = (e as { message?: string }).message ?? '쿠폰 발급에 실패했습니다.';
-      setToast({ message, type: 'error' });
+      const apiError = e as ApiError;
+      if (['CO003', 'CO004', 'CO005', 'CO006', 'CO007'].includes(apiError.code)) {
+        await refreshDetail();
+      }
+      setToast({ message: apiError.message ?? '쿠폰 발급에 실패했습니다.', type: 'error' });
     } finally {
       setIssuingId(null);
     }
@@ -84,7 +96,16 @@ export default function EventListPage() {
 
         {loading && <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>로딩 중...</div>}
         {error && !loading && (
-          <div style={{ padding: '12px 16px', marginBottom: '16px', background: '#ffebee', color: '#c62828', borderRadius: '4px', fontSize: '13px' }}>
+          <div
+            style={{
+              padding: '12px 16px',
+              marginBottom: '16px',
+              background: '#ffebee',
+              color: '#c62828',
+              borderRadius: '4px',
+              fontSize: '13px',
+            }}
+          >
             {error}
           </div>
         )}
@@ -114,9 +135,7 @@ export default function EventListPage() {
                     }}
                   >
                     <div style={{ marginBottom: '4px' }}>{board.title}</div>
-                    <div style={{ fontSize: '11px', color: '#999' }}>
-                      {new Date(board.startAt).toLocaleDateString()} ~ {new Date(board.endAt).toLocaleDateString()}
-                    </div>
+                    <div style={{ fontSize: '11px', color: '#999' }}>{formatDateRange(board.startAt, board.endAt)}</div>
                   </button>
                 ))}
               </div>
@@ -124,7 +143,7 @@ export default function EventListPage() {
 
             <div>
               {!detail ? (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>이벤트를 선택해주세요.</div>
+                <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>이벤트를 선택해 주세요.</div>
               ) : (
                 <>
                   <div style={{ marginBottom: '40px' }}>
@@ -139,16 +158,14 @@ export default function EventListPage() {
                     <p style={{ fontSize: '16px', color: '#666', lineHeight: '1.6', marginBottom: '16px', whiteSpace: 'pre-wrap' }}>
                       {detail.content}
                     </p>
-                    <div style={{ fontSize: '14px', color: '#999' }}>
-                      {new Date(detail.startAt).toLocaleDateString()} ~ {new Date(detail.endAt).toLocaleDateString()}
-                    </div>
+                    <div style={{ fontSize: '14px', color: '#999' }}>{formatDateRange(detail.startAt, detail.endAt)}</div>
                   </div>
 
                   <section>
                     <h3 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '24px' }}>제공 쿠폰</h3>
 
                     {boardCoupons.length === 0 ? (
-                      <div style={{ textAlign: 'center', padding: '24px', color: '#666' }}>제공하는 쿠폰이 없습니다.</div>
+                      <div style={{ textAlign: 'center', padding: '24px', color: '#666' }}>제공되는 쿠폰이 없습니다.</div>
                     ) : (
                       <div style={{ display: 'grid', gap: '12px' }}>
                         {boardCoupons.map((coupon) => {
@@ -157,8 +174,9 @@ export default function EventListPage() {
                           const buttonLabel = isBusy
                             ? '발급 중...'
                             : coupon.alreadyDownloaded
-                              ? '발급 완료'
+                              ? '받기 완료'
                               : COUPON_STATE_LABEL[coupon.state];
+
                           return (
                             <div
                               key={coupon.id}
@@ -185,12 +203,9 @@ export default function EventListPage() {
                                     </strong>
                                   </div>
                                   <div>최소 주문금액: ₩{coupon.minOrderPrice.toLocaleString()}</div>
-                                  <div>
-                                    유효기간: {new Date(coupon.validFrom).toLocaleDateString()} ~{' '}
-                                    {new Date(coupon.validUntil).toLocaleDateString()}
-                                  </div>
+                                  <div>유효기간: {formatCouponPeriod(coupon.validFrom, coupon.validUntil)}</div>
                                   <div style={{ fontSize: '12px', color: '#999' }}>
-                                    남은 수량: {coupon.remainingQuantity.toLocaleString()}장
+                                    남은 수량: {formatRemainingQuantity(coupon.remainingQuantity)}
                                   </div>
                                 </div>
                               </div>
@@ -217,4 +232,20 @@ export default function EventListPage() {
       </div>
     </>
   );
+}
+
+function formatDateRange(startAt: string, endAt: string | null) {
+  const start = new Date(startAt).toLocaleDateString();
+  const end = endAt ? new Date(endAt).toLocaleDateString() : '상시';
+  return `${start} ~ ${end}`;
+}
+
+function formatCouponPeriod(validFrom: string, validUntil: string | null) {
+  const start = new Date(validFrom).toLocaleDateString();
+  const end = validUntil ? new Date(validUntil).toLocaleDateString() : '기한 없음';
+  return `${start} ~ ${end}`;
+}
+
+function formatRemainingQuantity(remainingQuantity: number | null) {
+  return remainingQuantity === null ? '무제한' : `${remainingQuantity.toLocaleString()}장`;
 }
