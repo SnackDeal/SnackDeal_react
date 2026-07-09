@@ -14,6 +14,8 @@ import { formatPhoneNumberForStorage } from '@/lib/phone';
 const MOCK_CODE = '123456';
 const CODE_TTL_SEC = 300; // 5분
 const TOKEN_TTL_SEC = 600; // 10분
+const TEST_USER_EMAIL = 'user@snackdeal.io';
+const TEST_USER_PASSWORD = 'user1234';
 
 /** 지연을 흉내내는 유틸 */
 const delay = (ms = 400) => new Promise((r) => setTimeout(r, ms));
@@ -118,8 +120,7 @@ export async function join(payload: JoinPayload): Promise<AuthResult> {
 export async function login(email: string, password: string): Promise<AuthResult> {
   await delay();
   const found = members.find((m) => m.email.toLowerCase() === email.toLowerCase());
-  // mock 비밀번호: 아무 값이나 규칙만 맞으면 통과 (백엔드 없음)
-  if (!found || !password) {
+  if (!found || !password || (found.email === TEST_USER_EMAIL && password !== TEST_USER_PASSWORD)) {
     throw {
       code: 'UNAUTHORIZED',
       message: '아이디 또는 비밀번호가 일치하지 않습니다',

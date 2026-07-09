@@ -26,6 +26,12 @@ interface UserInfo {
   gender: Gender;
 }
 
+type Agreements = {
+  privacy: boolean;
+  terms: boolean;
+  marketing: boolean;
+};
+
 export default function SignupPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -203,9 +209,26 @@ function InfoStep({
   const [phone, setPhone] = useState('');
   const [birth, setBirth] = useState('');
   const [gender, setGender] = useState<Gender | ''>('');
-  const [agree, setAgree] = useState(false);
+  const [agreements, setAgreements] = useState<Agreements>({
+    privacy: false,
+    terms: false,
+    marketing: false,
+  });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const canJoin = agreements.privacy && agreements.terms;
+
+  const toggleRequiredAgreements = (checked: boolean) => {
+    setAgreements((current) => ({
+      ...current,
+      privacy: checked,
+      terms: checked,
+    }));
+  };
+
+  const toggleAgreement = (key: keyof Agreements, checked: boolean) => {
+    setAgreements((current) => ({ ...current, [key]: checked }));
+  };
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -236,7 +259,7 @@ function InfoStep({
       setError('성별을 선택해주세요.');
       return;
     }
-    if (!agree) {
+    if (!canJoin) {
       setError('이용약관 및 개인정보처리방침에 동의해주세요.');
       return;
     }
@@ -332,8 +355,8 @@ function InfoStep({
         <label className="flex items-start gap-2 text-sm text-gray-600">
           <input
             type="checkbox"
-            checked={agree}
-            onChange={(e) => setAgree(e.target.checked)}
+            checked={canJoin}
+            onChange={(e) => toggleRequiredAgreements(e.target.checked)}
             className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
           />
           <span>
@@ -342,7 +365,12 @@ function InfoStep({
           </span>
         </label>
         <div className="mt-3 flex flex-col gap-2">
-          <TermsAccordion title="개인정보 처리방침">
+          <TermsAccordion
+            title="개인정보 처리방침"
+            checked={agreements.privacy}
+            required
+            onCheckedChange={(checked) => toggleAgreement('privacy', checked)}
+          >
             <p>
               SnackDeal은 회원가입 및 서비스 제공을 위해 이메일, 이름, 휴대폰번호, 생년월일,
               성별 등의 개인정보를 수집·이용합니다. 수집된 정보는 회원 관리, 주문/배송, 고객
@@ -350,14 +378,23 @@ function InfoStep({
               보관 기간 이후 지체 없이 파기됩니다.
             </p>
           </TermsAccordion>
-          <TermsAccordion title="이용약관">
+          <TermsAccordion
+            title="이용약관"
+            checked={agreements.terms}
+            required
+            onCheckedChange={(checked) => toggleAgreement('terms', checked)}
+          >
             <p>
               본 약관은 SnackDeal이 제공하는 온라인 서비스의 이용조건 및 절차, 회원과 회사의
               권리·의무 및 책임사항을 규정합니다. 회원은 관계 법령과 본 약관, 이용안내 및
               공지사항 등을 준수하여야 하며, 회사의 업무 방해 행위를 하여서는 안 됩니다.
             </p>
           </TermsAccordion>
-          <TermsAccordion title="마케팅 정보 수신 동의 (선택)">
+          <TermsAccordion
+            title="마케팅 정보 수신 동의"
+            checked={agreements.marketing}
+            onCheckedChange={(checked) => toggleAgreement('marketing', checked)}
+          >
             <p>
               혜택, 이벤트, 쿠폰 등 마케팅 정보를 이메일 및 SMS로 받아보실 수 있습니다. 수신
               동의는 선택사항이며, 동의하지 않으셔도 회원가입 및 기본 서비스 이용에는 제한이
@@ -375,7 +412,7 @@ function InfoStep({
             이전
           </Button>
         )}
-        <Button type="submit" size="lg" className={onBack ? 'flex-[2]' : 'w-full'} disabled={loading}>
+        <Button type="submit" size="lg" className={onBack ? 'flex-[2]' : 'w-full'} disabled={loading || !canJoin}>
           {loading ? '가입 처리 중...' : '가입 완료'}
         </Button>
       </div>
@@ -499,22 +536,48 @@ function EmailStep({
   );
 }
 
-function TermsAccordion({ title, children }: { title: string; children: ReactNode }) {
+function TermsAccordion({
+  title,
+  checked,
+  required = false,
+  children,
+  onCheckedChange,
+}: {
+  title: string;
+  checked: boolean;
+  required?: boolean;
+  children: ReactNode;
+  onCheckedChange: (checked: boolean) => void;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-gray-800 hover:bg-gray-50"
-        aria-expanded={open}
-      >
-        <span>{title}</span>
-        <ChevronDown
-          size={16}
-          className={cn('text-gray-500 transition-transform', open && 'rotate-180')}
+      <div className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-800 hover:bg-gray-50">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onCheckedChange(e.target.checked)}
+          className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+          aria-label={`${title} 동의`}
         />
-      </button>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex flex-1 items-center justify-between text-left"
+          aria-expanded={open}
+        >
+          <span>
+            {title}
+            <span className="ml-1 text-xs font-medium text-gray-500">
+              {required ? '[필수]' : '[선택]'}
+            </span>
+          </span>
+          <ChevronDown
+            size={16}
+            className={cn('text-gray-500 transition-transform', open && 'rotate-180')}
+          />
+        </button>
+      </div>
       {open && (
         <div className="border-t border-gray-100 px-4 py-3 text-sm leading-6 text-gray-500">
           {children}

@@ -54,6 +54,7 @@ export default function AdminQnaPage() {
     if (statusFilter === 'PENDING') return orderedQnas.filter((qna) => !qna.answered);
     return orderedQnas.filter((qna) => qna.answered);
   }, [orderedQnas, statusFilter]);
+  const selectedDetailHasAnswer = Boolean(selectedDetail?.answered || selectedDetail?.answerContent?.trim());
 
   useEffect(() => {
     if (!accessToken || !adminSession) return;
@@ -147,7 +148,7 @@ export default function AdminQnaPage() {
       setToast({ message: '답변 내용을 입력하세요.', type: 'error' });
       return;
     }
-    if (selectedDetail.answered) {
+    if (selectedDetailHasAnswer) {
       setToast({ message: '이미 답변한 문의입니다.', type: 'error' });
       return;
     }
@@ -485,7 +486,7 @@ export default function AdminQnaPage() {
                     }}
                   >
                     <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', marginBottom: 8 }}>
-                      기존 답변
+                      답변
                     </div>
                     <div style={{ color: '#334155', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
                       {selectedDetail.answerContent}
@@ -493,55 +494,57 @@ export default function AdminQnaPage() {
                   </div>
                 )}
 
-                <div style={{ marginTop: 24, borderRadius: 16, border: '1px solid #e2e8f0', padding: 16 }}>
-                  <label style={{ display: 'grid', gap: 8 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>답변 작성</span>
-                    <textarea
-                      value={answer}
-                      onChange={(e) => setAnswer(e.target.value)}
-                      rows={7}
-                      disabled={selectedDetail.answered || submitting}
-                      style={{
-                        width: '100%',
-                        borderRadius: 12,
-                        border: '1px solid #dbe3ee',
-                        padding: 14,
-                        fontSize: 14,
-                        lineHeight: 1.7,
-                        resize: 'vertical',
-                        background: selectedDetail.answered ? '#f8fafc' : '#fff',
-                      }}
-                    />
-                  </label>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginTop: 14 }}>
-                    <button
-                      type="button"
-                      onClick={() => void handleAiRecommendation()}
-                      disabled={aiLoading || selectedDetail.answered}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        borderRadius: 12,
-                        border: '1px solid #dbe3ee',
-                        background: '#fff',
-                        padding: '10px 12px',
-                        cursor: aiLoading || selectedDetail.answered ? 'not-allowed' : 'pointer',
-                        fontSize: 13,
-                        fontWeight: 700,
-                        color: '#0f172a',
-                      }}
-                    >
-                      <Sparkles size={14} />
-                      {aiLoading ? '요약 생성 중...' : 'AI 요약 받기'}
-                    </button>
+                {!selectedDetailHasAnswer && (
+                  <div style={{ marginTop: 24, borderRadius: 16, border: '1px solid #e2e8f0', padding: 16 }}>
+                    <label style={{ display: 'grid', gap: 8 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>답변 작성</span>
+                      <textarea
+                        value={answer}
+                        onChange={(e) => setAnswer(e.target.value)}
+                        rows={7}
+                        disabled={submitting}
+                        style={{
+                          width: '100%',
+                          borderRadius: 12,
+                          border: '1px solid #dbe3ee',
+                          padding: 14,
+                          fontSize: 14,
+                          lineHeight: 1.7,
+                          resize: 'vertical',
+                          background: '#fff',
+                        }}
+                      />
+                    </label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginTop: 14 }}>
+                      <button
+                        type="button"
+                        onClick={() => void handleAiRecommendation()}
+                        disabled={aiLoading}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          borderRadius: 12,
+                          border: '1px solid #dbe3ee',
+                          background: '#fff',
+                          padding: '10px 12px',
+                          cursor: aiLoading ? 'not-allowed' : 'pointer',
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: '#0f172a',
+                        }}
+                      >
+                        <Sparkles size={14} />
+                        {aiLoading ? '요약 생성 중...' : 'AI 요약 받기'}
+                      </button>
 
-                    <Button onClick={() => void handleSubmitAnswer()} type="button" disabled={submitting || selectedDetail.answered}>
-                      <Send size={16} />
-                      {submitting ? '저장 중...' : '답변 등록'}
-                    </Button>
+                      <Button onClick={() => void handleSubmitAnswer()} type="button" disabled={submitting}>
+                        <Send size={16} />
+                        {submitting ? '저장 중...' : '답변 등록'}
+                      </Button>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div style={{ marginTop: 18, fontSize: 12, color: '#64748b', lineHeight: 1.8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>

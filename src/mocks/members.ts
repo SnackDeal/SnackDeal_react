@@ -3,7 +3,7 @@ import type { Member } from '@/types';
 export const members: Member[] = [
   {
     id: 1,
-    email: 'user@snackdeal.com',
+    email: 'user@snackdeal.io',
     name: '김스낵',
     phone: '010-1234-5678',
     birth: '1998-03-15',

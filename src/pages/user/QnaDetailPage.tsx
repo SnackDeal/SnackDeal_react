@@ -257,7 +257,7 @@ export default function QnaDetailPage() {
             >
               <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <UserRound size={14} />
-                관리자 답변
+                답변
               </div>
               <div style={{ color: '#334155', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
                 {detail.answerContent}

@@ -36,6 +36,7 @@ export default function AdminQnaDetailPage() {
   const [aiSummary, setAiSummary] = useState('');
   const [aiSuggestedAnswer, setAiSuggestedAnswer] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const detailHasAnswer = Boolean(detail?.answered || detail?.answerContent?.trim());
 
   const clearAiDraft = () => {
     setAiSummary('');
@@ -107,10 +108,10 @@ export default function AdminQnaDetailPage() {
       setToast({ message: '답변 내용을 입력하세요.', type: 'error' });
       return;
     }
-    if (detail.answered) {
-      setToast({ message: '이미 답변한 문의입니다.', type: 'error' });
-      return;
-    }
+      if (detailHasAnswer) {
+        setToast({ message: '이미 답변한 문의입니다.', type: 'error' });
+        return;
+      }
 
     setSubmitting(true);
     setError('');
@@ -253,7 +254,7 @@ export default function AdminQnaDetailPage() {
             <div style={{ marginTop: 20, borderRadius: 16, borderLeft: '4px solid #0f172a', background: '#f8fafc', padding: 16 }}>
               <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <UserRound size={14} />
-                기존 답변
+                답변
               </div>
               <div style={{ color: '#334155', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
                 {detail.answerContent}
@@ -261,55 +262,57 @@ export default function AdminQnaDetailPage() {
             </div>
           )}
 
-          <div style={{ marginTop: 24, borderRadius: 16, border: '1px solid #e2e8f0', padding: 16 }}>
-            <label style={{ display: 'grid', gap: 8 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>답변 작성</span>
-              <textarea
-                value={answer}
-                onChange={(e) => setAnswer(e.target.value)}
-                rows={7}
-                disabled={detail.answered || submitting}
-                style={{
-                  width: '100%',
-                  borderRadius: 12,
-                  border: '1px solid #dbe3ee',
-                  padding: 14,
-                  fontSize: 14,
-                  lineHeight: 1.7,
-                  resize: 'vertical',
-                  background: detail.answered ? '#f8fafc' : '#fff',
-                }}
-              />
-            </label>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginTop: 14 }}>
-              <button
-                type="button"
-                onClick={() => void handleAiRecommendation()}
-                disabled={aiLoading || detail.answered}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  borderRadius: 12,
-                  border: '1px solid #dbe3ee',
-                  background: '#fff',
-                  padding: '10px 12px',
-                  cursor: aiLoading || detail.answered ? 'not-allowed' : 'pointer',
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: '#0f172a',
-                }}
-              >
-                <Sparkles size={14} />
-                {aiLoading ? '요약 생성 중...' : 'AI 요약 받기'}
-              </button>
+          {!detailHasAnswer && (
+            <div style={{ marginTop: 24, borderRadius: 16, border: '1px solid #e2e8f0', padding: 16 }}>
+              <label style={{ display: 'grid', gap: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>답변 작성</span>
+                <textarea
+                  value={answer}
+                  onChange={(e) => setAnswer(e.target.value)}
+                  rows={7}
+                  disabled={submitting}
+                  style={{
+                    width: '100%',
+                    borderRadius: 12,
+                    border: '1px solid #dbe3ee',
+                    padding: 14,
+                    fontSize: 14,
+                    lineHeight: 1.7,
+                    resize: 'vertical',
+                    background: '#fff',
+                  }}
+                />
+              </label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginTop: 14 }}>
+                <button
+                  type="button"
+                  onClick={() => void handleAiRecommendation()}
+                  disabled={aiLoading}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    borderRadius: 12,
+                    border: '1px solid #dbe3ee',
+                    background: '#fff',
+                    padding: '10px 12px',
+                    cursor: aiLoading ? 'not-allowed' : 'pointer',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: '#0f172a',
+                  }}
+                >
+                  <Sparkles size={14} />
+                  {aiLoading ? '요약 생성 중...' : 'AI 요약 받기'}
+                </button>
 
-              <Button onClick={() => void handleSubmitAnswer()} type="button" disabled={submitting || detail.answered}>
-                <Send size={16} />
-                {submitting ? '저장 중...' : '답변 등록'}
-              </Button>
+                <Button onClick={() => void handleSubmitAnswer()} type="button" disabled={submitting}>
+                  <Send size={16} />
+                  {submitting ? '저장 중...' : '답변 등록'}
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
         </article>
       ) : null}
     </div>

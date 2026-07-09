@@ -96,7 +96,7 @@ export default function LoginPage() {
       </form>
 
       <p className="mt-5 rounded-lg bg-gray-50 px-3 py-2.5 text-xs leading-relaxed text-gray-400">
-        테스트 계정: user@snackdeal.com
+        테스트 계정: user@snackdeal.io / user1234
       </p>
     </AuthShell>
   );
