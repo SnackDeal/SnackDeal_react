@@ -100,6 +100,7 @@ export function UserLayout() {
       'block rounded-lg px-3 py-2 text-sm font-medium transition-colors',
       isActive ? 'bg-brand-50 text-brand-700' : 'text-gray-600 hover:bg-gray-100'
     );
+  const myPageTarget = member ? '/mypage' : '/';
 
   const mobileMenu = (
     <div className="flex h-full flex-col">
@@ -163,7 +164,7 @@ export function UserLayout() {
           장바구니{cartCount > 0 ? ` (${cartCount})` : ''}
         </NavLink>
         <NavLink
-          to={member ? '/mypage' : '/login'}
+          to={myPageTarget}
           onClick={() => setIsMobileMenuOpen(false)}
           className={mobileNavLinkClass}
         >
@@ -269,7 +270,7 @@ export function UserLayout() {
               )}
             </Link>
             <Link
-              to="/mypage"
+              to={myPageTarget}
               className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
               aria-label="마이페이지"
             >

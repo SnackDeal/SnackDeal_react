@@ -7,6 +7,7 @@
 // VITE_API_URL 이 설정되면 해당 주소로, 비어있으면 Vite 프록시(상대경로) 사용
 import { formatPhoneNumberForStorage } from '@/lib/phone';
 import type { Product } from '@/lib/mockProducts';
+import type { QnaType } from '@/types';
 
 const configuredBaseUrl = ((import.meta.env.VITE_API_URL as string | undefined) ?? '').trim();
 const configuredChatbotBaseUrl = ((import.meta.env.VITE_CHATBOT_API_URL as string | undefined) ?? '').trim();
@@ -140,6 +141,36 @@ async function chatbotRawRequest<T>(path: string, options: RequestInit = {}): Pr
   return body as T;
 }
 
+async function fileRequest<T>(
+  path: string,
+  options: RequestInit = {},
+  token?: string | null
+): Promise<T> {
+  const headers: Record<string, string> = {
+    ...(options.headers as Record<string, string>),
+  };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  } catch {
+    throw { code: 'NETWORK_ERROR', message: '서버에 연결할 수 없습니다.' } as ApiError;
+  }
+
+  const body = await res.json().catch(() => ({}));
+
+  if (!res.ok || body.success === false) {
+    throw {
+      code: body.code ?? 'UNKNOWN',
+      message: body.message ?? `요청에 실패했습니다. (${res.status})`,
+      status: res.status,
+    } as ApiError;
+  }
+
+  return (Object.prototype.hasOwnProperty.call(body, 'data') ? body.data : body) as T;
+}
+
 export interface ChatbotResponse {
   answer: string;
 }
@@ -155,6 +186,31 @@ export async function apiAskChatbot(message: string): Promise<ChatbotResponse> {
 /** GET /health */
 export async function apiHealthCheck(): Promise<{ status: string }> {
   return chatbotRawRequest('/health');
+}
+
+// ─── 파일 업로드 ─────────────────────────────────────────────────────────────
+
+/** POST /file 🔒 */
+export async function apiUploadFile(
+  token: string,
+  file: File,
+  directory: string
+): Promise<{ url: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('directory', directory);
+
+  return fileRequest('/file', {
+    method: 'POST',
+    body: formData,
+  }, token);
+}
+
+/** DELETE /file?url=... 🔒 */
+export async function apiDeleteFile(token: string, url: string): Promise<null> {
+  return fileRequest(`/file?url=${encodeURIComponent(url)}`, {
+    method: 'DELETE',
+  }, token);
 }
 
 // ─── 상품 ────────────────────────────────────────────────────────────────────
@@ -544,9 +600,71 @@ export interface DashboardData {
   pendingQnaCount: number;
 }
 
+export interface DashboardChartDateRange {
+  startDate: string;
+  endDate: string;
+}
+
+export interface DashboardMemberChartItem {
+  date: string;
+  count: number;
+}
+
+export interface DashboardOrderChartItem {
+  date: string;
+  count: number;
+}
+
+export interface DashboardSalesChartItem {
+  date: string;
+  salesAmount: number;
+  soldQuantity: number;
+}
+
+export interface DashboardCouponChartItem {
+  date: string;
+  issuedCount: number;
+  usedCount: number;
+}
+
+function buildDashboardChartQuery(params: DashboardChartDateRange) {
+  const query = new URLSearchParams();
+  query.set('startDate', params.startDate);
+  query.set('endDate', params.endDate);
+  return query.toString();
+}
+
 /** GET /admin/main 👑 */
 export async function apiGetDashboard(token: string): Promise<DashboardData> {
   return request('/admin/main', {}, token);
+}
+
+export async function apiGetDashboardMemberChart(
+  token: string,
+  params: DashboardChartDateRange
+): Promise<{ items: DashboardMemberChartItem[] }> {
+  return request(`/admin/main/chart/members?${buildDashboardChartQuery(params)}`, {}, token);
+}
+
+export async function apiGetDashboardOrderChart(
+  token: string,
+  params: DashboardChartDateRange
+): Promise<{ items: DashboardOrderChartItem[] }> {
+  return request(`/admin/main/chart/orders?${buildDashboardChartQuery(params)}`, {}, token);
+}
+
+export async function apiGetDashboardSalesChart(
+  token: string,
+  params: DashboardChartDateRange
+): Promise<{ items: DashboardSalesChartItem[] }> {
+  return request(`/admin/main/chart/sales?${buildDashboardChartQuery(params)}`, {}, token);
+}
+
+export async function apiGetDashboardCouponChart(
+  token: string,
+  params: DashboardChartDateRange
+): Promise<{ items: DashboardCouponChartItem[] }> {
+  return request(`/admin/main/chart/coupons?${buildDashboardChartQuery(params)}`, {}, token);
 }
 
 // ─── 관리자 회원 관리 ─────────────────────────────────────────────────────────
@@ -614,11 +732,130 @@ export interface MyCoupon {
 }
 
 /** GET /mypage/coupon 🔒 */
-export async function apiGetMyCoupons(token: string): Promise<MyCoupon[]> {
-  const data = await request<MyCoupon[] | { coupons?: MyCoupon[] } | null>('/mypage/coupon', {}, token);
+export async function apiGetMyCoupons(
+  token: string,
+  status?: 'ACTIVE' | 'USED' | 'EXPIRED'
+): Promise<MyCoupon[]> {
+  const query = status ? `?status=${status}` : '';
+  const data = await request<MyCoupon[] | { coupons?: MyCoupon[] } | null>(`/mypage/coupon${query}`, {}, token);
   if (!data) return [];
   if (Array.isArray(data)) return data;
   return data.coupons ?? [];
+}
+
+// ─── 이벤트 쿠폰 게시판 (사용자 공개) ────────────────────────────────────────
+
+export type EventCouponState = 'open' | 'upcoming' | 'soldout' | 'closed';
+
+export interface EventCoupon {
+  id: number;
+  name: string;
+  discountType: 'FIXED' | 'PERCENT';
+  discountValue: number;
+  minOrderPrice: number;
+  validFrom: string;
+  validUntil: string;
+  remainingQuantity: number;
+  state: EventCouponState;
+  alreadyDownloaded: boolean;
+}
+
+export interface EventCouponBoard {
+  id: number;
+  title: string;
+  content: string;
+  thumbnailUrl: string | null;
+  startAt: string;
+  endAt: string;
+  coupons?: EventCoupon[];
+}
+
+type EventCouponResponse = {
+  id: number;
+  name: string;
+  discountType?: 'FIXED' | 'PERCENT';
+  discount_type?: 'FIXED' | 'PERCENT';
+  discountValue?: number;
+  discount_value?: number;
+  minOrderPrice?: number;
+  min_order_price?: number;
+  validFrom?: string;
+  valid_from?: string;
+  validUntil?: string;
+  valid_until?: string;
+  remainingQuantity?: number;
+  remaining_quantity?: number;
+  state?: EventCouponState;
+  alreadyDownloaded?: boolean;
+  already_downloaded?: boolean;
+};
+
+type EventCouponBoardResponse = {
+  id: number;
+  title: string;
+  content: string;
+  thumbnailUrl?: string | null;
+  thumbnail_url?: string | null;
+  startAt?: string;
+  start_at?: string;
+  endAt?: string;
+  end_at?: string;
+  coupons?: EventCouponResponse[];
+};
+
+type EventCouponBoardDetailResponse = {
+  couponBoard?: EventCouponBoardResponse;
+  coupon_board?: EventCouponBoardResponse;
+  coupons?: EventCouponResponse[];
+} & EventCouponBoardResponse;
+
+function mapEventCoupon(item: EventCouponResponse): EventCoupon {
+  return {
+    id: item.id,
+    name: item.name,
+    discountType: item.discountType ?? item.discount_type ?? 'FIXED',
+    discountValue: item.discountValue ?? item.discount_value ?? 0,
+    minOrderPrice: item.minOrderPrice ?? item.min_order_price ?? 0,
+    validFrom: item.validFrom ?? item.valid_from ?? '',
+    validUntil: item.validUntil ?? item.valid_until ?? '',
+    remainingQuantity: item.remainingQuantity ?? item.remaining_quantity ?? 0,
+    state: item.state ?? 'open',
+    alreadyDownloaded: item.alreadyDownloaded ?? item.already_downloaded ?? false,
+  };
+}
+
+function mapEventCouponBoard(item: EventCouponBoardResponse, coupons?: EventCouponResponse[]): EventCouponBoard {
+  return {
+    id: item.id,
+    title: item.title,
+    content: item.content,
+    thumbnailUrl: item.thumbnailUrl ?? item.thumbnail_url ?? null,
+    startAt: item.startAt ?? item.start_at ?? '',
+    endAt: item.endAt ?? item.end_at ?? '',
+    coupons: (coupons ?? item.coupons)?.map(mapEventCoupon),
+  };
+}
+
+/** GET /event/coupon/list */
+export async function apiGetEventCouponBoards(token?: string | null): Promise<EventCouponBoard[]> {
+  const data = await request<
+    EventCouponBoardResponse[] | { items?: EventCouponBoardResponse[]; content?: EventCouponBoardResponse[]; boards?: EventCouponBoardResponse[] } | null
+  >('/event/coupon/list', {}, token ?? undefined);
+  const list = !data ? [] : Array.isArray(data) ? data : data.items ?? data.content ?? data.boards ?? [];
+  return list.map((item) => mapEventCouponBoard(item));
+}
+
+/** GET /event/coupon-board/{boardId} */
+export async function apiGetEventCouponBoard(boardId: number, token?: string | null): Promise<EventCouponBoard> {
+  const data = await request<EventCouponBoardDetailResponse>(`/event/coupon-board/${boardId}`, {}, token ?? undefined);
+  const board = data.couponBoard ?? data.coupon_board ?? data;
+  return mapEventCouponBoard(board, data.coupons ?? board.coupons);
+}
+
+/** POST /event/coupon/{couponId}/download 🔒 */
+export async function apiDownloadEventCoupon(token: string, couponId: number): Promise<MyCoupon | null> {
+  const data = await request<MyCoupon | null>(`/event/coupon/${couponId}/download`, { method: 'POST' }, token);
+  return data;
 }
 
 // ─── 주문 (사용자) ────────────────────────────────────────────────────────────
@@ -677,12 +914,17 @@ export interface OrderPreparePayload {
   items: { productId: number; quantity: number }[];
   deliveryId?: number;
   shipping?: ShippingRequest | null;
-  userCouponId?: number;
+  userCouponId?: number | null;
 }
 
 export interface OrderPrepareResponse {
   paymentId: string;
   amount: number;
+  productAmount?: number;
+  shippingFee?: number;
+  discountAmount?: number;
+  finalAmount?: number;
+  couponName?: string | null;
   storeId: string;
   channelKey: string;
   buyerEmail: string;
@@ -868,6 +1110,332 @@ export async function apiAdminRefund(
   }, token);
 }
 
+// ─── 관리자 FAQ ───────────────────────────────────────────────────────────────
+
+export interface AdminFaq {
+  id: number;
+  type: QnaType;
+  title: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminFaqPayload {
+  type: QnaType;
+  title: string;
+  content: string;
+}
+
+type AdminFaqResponse = AdminFaq & {
+  created_at?: string;
+  updated_at?: string;
+};
+
+function mapAdminFaq(item: AdminFaqResponse): AdminFaq {
+  return {
+    id: item.id,
+    type: item.type,
+    title: item.title,
+    content: item.content,
+    createdAt: item.createdAt ?? item.created_at ?? '',
+    updatedAt: item.updatedAt ?? item.updated_at ?? '',
+  };
+}
+
+/** GET /admin/cs/faq 👑 */
+export async function apiGetAdminFaqs(token: string, type?: QnaType): Promise<AdminFaq[]> {
+  const q = new URLSearchParams();
+  if (type) q.set('type', type);
+  const data = await request<AdminFaqResponse[] | { items?: AdminFaqResponse[]; content?: AdminFaqResponse[] } | null>(
+    `/admin/cs/faq${q.toString() ? `?${q.toString()}` : ''}`,
+    {},
+    token
+  );
+  const list = !data ? [] : Array.isArray(data) ? data : data.items ?? data.content ?? [];
+  return list.map(mapAdminFaq);
+}
+
+/** GET /admin/cs/faq/{id} 👑 */
+export async function apiGetAdminFaq(token: string, id: number): Promise<AdminFaq> {
+  const data = await request<AdminFaqResponse>(`/admin/cs/faq/${id}`, {}, token);
+  return mapAdminFaq(data);
+}
+
+/** POST /admin/cs/faq 👑 */
+export async function apiCreateAdminFaq(token: string, payload: AdminFaqPayload): Promise<AdminFaq> {
+  const data = await request<AdminFaqResponse>('/admin/cs/faq', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, token);
+  return mapAdminFaq(data);
+}
+
+/** PUT /admin/cs/faq/{id} 👑 */
+export async function apiUpdateAdminFaq(token: string, id: number, payload: AdminFaqPayload): Promise<AdminFaq> {
+  const data = await request<AdminFaqResponse>(`/admin/cs/faq/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  }, token);
+  return mapAdminFaq(data);
+}
+
+/** DELETE /admin/cs/faq/{id} 👑 */
+export async function apiDeleteAdminFaq(token: string, id: number): Promise<null> {
+  return request(`/admin/cs/faq/${id}`, { method: 'DELETE' }, token);
+}
+
+export interface PublicFaq {
+  id: number;
+  type: QnaType;
+  title: string;
+  content: string;
+}
+
+type PublicFaqResponse = PublicFaq & {
+  createdAt?: string;
+  updatedAt?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+function mapPublicFaq(item: PublicFaqResponse): PublicFaq {
+  return {
+    id: item.id,
+    type: item.type,
+    title: item.title,
+    content: item.content,
+  };
+}
+
+/** GET /cs/qna/faq */
+export async function apiGetPublicFaqs(type?: QnaType): Promise<PublicFaq[]> {
+  const q = new URLSearchParams();
+  if (type) q.set('type', type);
+  const data = await request<PublicFaqResponse[] | { items?: PublicFaqResponse[]; content?: PublicFaqResponse[] } | null>(
+    `/cs/qna/faq${q.toString() ? `?${q.toString()}` : ''}`
+  );
+  const list = !data ? [] : Array.isArray(data) ? data : data.items ?? data.content ?? [];
+  return list.map(mapPublicFaq);
+}
+
+// ─── 관리자 쿠폰 ──────────────────────────────────────────────────────────────
+
+export type AdminCouponDiscountType = 'FIXED' | 'PERCENT';
+export type AdminCouponIssueType = 'EVENT' | 'SIGNIN';
+
+export interface AdminCouponBoard {
+  id: number;
+  title: string;
+  content: string;
+  thumbnailUrl: string | null;
+  isActive: boolean;
+  startAt: string;
+  endAt: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AdminCoupon {
+  id: number;
+  name: string;
+  discountType: AdminCouponDiscountType;
+  discountValue: number;
+  minOrderPrice: number;
+  validFrom: string;
+  validUntil: string;
+  totalQuantity: number;
+  issuedQuantity: number;
+  issueType: AdminCouponIssueType;
+  isActive: boolean;
+  couponBoardId: number | null;
+  couponBoardTitle?: string | null;
+}
+
+export interface AdminCouponBoardPayload {
+  title: string;
+  content: string;
+  thumbnailUrl?: string | null;
+  isActive: boolean;
+  startAt: string;
+  endAt: string;
+}
+
+export interface AdminCouponPayload {
+  name: string;
+  discountType: AdminCouponDiscountType;
+  discountValue: number;
+  minOrderPrice: number;
+  validFrom: string;
+  validUntil: string;
+  totalQuantity: number;
+  issueType: AdminCouponIssueType;
+  isActive: boolean;
+  couponBoardId?: number | null;
+}
+
+type AdminCouponResponse = AdminCoupon & {
+  discount_type?: AdminCouponDiscountType;
+  discount_value?: number;
+  min_order_price?: number;
+  valid_from?: string;
+  valid_until?: string;
+  total_quantity?: number;
+  issued_quantity?: number;
+  issue_type?: AdminCouponIssueType;
+  is_active?: boolean;
+  status?: 'ACTIVE' | 'INACTIVE' | 'DELETED';
+  coupon_board_id?: number | null;
+  coupon_board_title?: string | null;
+};
+
+type AdminCouponBoardResponse = AdminCouponBoard & {
+  thumbnail_url?: string | null;
+  is_active?: boolean;
+  status?: 'ACTIVE' | 'INACTIVE' | 'DELETED';
+  start_at?: string;
+  end_at?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+function listFromResponse<T>(
+  data: T[] | { items?: T[]; content?: T[]; coupons?: T[]; boards?: T[] } | null
+): T[] {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  return data.items ?? data.content ?? data.coupons ?? data.boards ?? [];
+}
+
+function mapAdminCoupon(item: AdminCouponResponse): AdminCoupon {
+  return {
+    id: item.id,
+    name: item.name,
+    discountType: item.discountType ?? item.discount_type ?? 'FIXED',
+    discountValue: item.discountValue ?? item.discount_value ?? 0,
+    minOrderPrice: item.minOrderPrice ?? item.min_order_price ?? 0,
+    validFrom: item.validFrom ?? item.valid_from ?? '',
+    validUntil: item.validUntil ?? item.valid_until ?? '',
+    totalQuantity: item.totalQuantity ?? item.total_quantity ?? 0,
+    issuedQuantity: item.issuedQuantity ?? item.issued_quantity ?? 0,
+    issueType: item.issueType ?? item.issue_type ?? 'EVENT',
+    isActive: item.isActive ?? item.is_active ?? (item.status ? item.status === 'ACTIVE' : false),
+    couponBoardId: item.couponBoardId ?? item.coupon_board_id ?? null,
+    couponBoardTitle: item.couponBoardTitle ?? item.coupon_board_title ?? null,
+  };
+}
+
+function mapAdminCouponBoard(item: AdminCouponBoardResponse): AdminCouponBoard {
+  return {
+    id: item.id,
+    title: item.title,
+    content: item.content,
+    thumbnailUrl: item.thumbnailUrl ?? item.thumbnail_url ?? null,
+    isActive: item.isActive ?? item.is_active ?? (item.status ? item.status === 'ACTIVE' : false),
+    startAt: item.startAt ?? item.start_at ?? '',
+    endAt: item.endAt ?? item.end_at ?? '',
+    createdAt: item.createdAt ?? item.created_at,
+    updatedAt: item.updatedAt ?? item.updated_at,
+  };
+}
+
+/** GET /admin/coupon 👑 */
+export async function apiGetAdminCoupons(token: string): Promise<AdminCoupon[]> {
+  const data = await request<
+    AdminCouponResponse[] | { items?: AdminCouponResponse[]; content?: AdminCouponResponse[]; coupons?: AdminCouponResponse[] } | null
+  >('/admin/coupon', {}, token);
+  return listFromResponse(data).map(mapAdminCoupon);
+}
+
+/** POST /admin/coupon 👑 */
+export async function apiCreateAdminCoupon(
+  token: string,
+  payload: AdminCouponPayload
+): Promise<AdminCoupon> {
+  const data = await request<AdminCouponResponse>('/admin/coupon', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, token);
+  return mapAdminCoupon(data);
+}
+
+/** PUT /admin/coupon/{id} 👑 */
+export async function apiUpdateAdminCoupon(
+  token: string,
+  id: number,
+  payload: AdminCouponPayload
+): Promise<AdminCoupon> {
+  const data = await request<AdminCouponResponse>(`/admin/coupon/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  }, token);
+  return mapAdminCoupon(data);
+}
+
+/** PATCH /admin/coupon/{id}/status 👑 */
+export async function apiUpdateAdminCouponStatus(
+  token: string,
+  id: number,
+  isActive: boolean
+): Promise<AdminCoupon> {
+  const data = await request<AdminCouponResponse>(`/admin/coupon/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ isActive }),
+  }, token);
+  return mapAdminCoupon(data);
+}
+
+/** GET /admin/coupon-board 👑 */
+export async function apiGetAdminCouponBoards(token: string): Promise<AdminCouponBoard[]> {
+  const data = await request<
+    AdminCouponBoardResponse[] | { items?: AdminCouponBoardResponse[]; content?: AdminCouponBoardResponse[]; boards?: AdminCouponBoardResponse[] } | null
+  >('/admin/coupon-board', {}, token);
+  return listFromResponse(data).map(mapAdminCouponBoard);
+}
+
+/** POST /admin/coupon-board 👑 */
+export async function apiCreateAdminCouponBoard(
+  token: string,
+  payload: AdminCouponBoardPayload
+): Promise<AdminCouponBoard> {
+  const data = await request<AdminCouponBoardResponse>('/admin/coupon-board', {
+    method: 'POST',
+    body: JSON.stringify({ ...payload, status: payload.isActive ? 'ACTIVE' : 'INACTIVE' }),
+  }, token);
+  return mapAdminCouponBoard(data);
+}
+
+/** PUT /admin/coupon-board/{id} 👑 */
+export async function apiUpdateAdminCouponBoard(
+  token: string,
+  id: number,
+  payload: AdminCouponBoardPayload
+): Promise<AdminCouponBoard> {
+  const data = await request<AdminCouponBoardResponse>(`/admin/coupon-board/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ ...payload, status: payload.isActive ? 'ACTIVE' : 'INACTIVE' }),
+  }, token);
+  return mapAdminCouponBoard(data);
+}
+
+/** DELETE /admin/coupon-board/{id} 👑 */
+export async function apiDeleteAdminCouponBoard(token: string, id: number): Promise<void> {
+  await request<null>(`/admin/coupon-board/${id}`, { method: 'DELETE' }, token);
+}
+
+/** PATCH /admin/coupon-board/{id}/status 👑 */
+export async function apiUpdateAdminCouponBoardStatus(
+  token: string,
+  id: number,
+  isActive: boolean
+): Promise<AdminCouponBoard> {
+  const data = await request<AdminCouponBoardResponse>(`/admin/coupon-board/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ isActive, status: isActive ? 'ACTIVE' : 'INACTIVE' }),
+  }, token);
+  return mapAdminCouponBoard(data);
+}
+
 // ─── 배송비 정책 ──────────────────────────────────────────────────────────────
 
 // ─── 관리자 카테고리 ───────────────────────────────────────────────────────────
@@ -929,7 +1497,7 @@ export async function apiDeleteAdminCategory(token: string, id: number): Promise
 export async function apiUpdateAdminCategoryOrder(
   token: string,
   payload: AdminCategoryOrderPayload
-): Promise<string> {
+): Promise<null> {
   return request('/admin/category/order', {
     method: 'PATCH',
     body: JSON.stringify(payload),

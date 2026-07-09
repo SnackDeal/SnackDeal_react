@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type DragEvent, type FormEvent, useEffect, useMemo, useState } from 'react';
+import { GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Toast } from '@/components/ui/Toast';
 import { cn } from '@/lib/cn';
@@ -28,35 +29,55 @@ function formatDate(value: string) {
   return date.toLocaleString();
 }
 
-function isNotImplementedError(error: ApiError) {
-  return error.message?.includes('구현되지') || error.code === 'NOT_IMPLEMENTED';
+function sortCategories(categories: AdminCategory[]) {
+  return [...categories].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.id - b.id);
+}
+
+function applyDisplayOrder(categories: AdminCategory[]) {
+  return sortCategories(categories).map((category, index) => ({
+    ...category,
+    sortOrder: index + 1,
+  }));
+}
+
+function reorderCategories(categories: AdminCategory[], activeId: number, overId: number) {
+  const next = applyDisplayOrder(categories);
+  const activeIndex = next.findIndex((category) => category.id === activeId);
+  const overIndex = next.findIndex((category) => category.id === overId);
+
+  if (activeIndex < 0 || overIndex < 0 || activeIndex === overIndex) return next;
+
+  const [moved] = next.splice(activeIndex, 1);
+  next.splice(overIndex, 0, moved);
+
+  return next.map((category, index) => ({
+    ...category,
+    sortOrder: index + 1,
+  }));
+}
+
+function isCategoryMissingError(error: ApiError) {
+  return error.message?.includes('카테고리를 찾을 수 없습니다') || error.code === 'CATEGORY_NOT_FOUND';
 }
 
 export function AdminCategories() {
   const { adminSession, accessToken } = useAdminAuthStore();
-  const formRef = useRef<HTMLFormElement | null>(null);
-  const nameInputRef = useRef<HTMLInputElement | null>(null);
   const [categories, setCategories] = useState<AdminCategory[]>([]);
-  const [orderDraft, setOrderDraft] = useState<Record<number, number>>({});
   const [form, setForm] = useState<CategoryForm>(emptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [draggingId, setDraggingId] = useState<number | null>(null);
+  const [dragOverId, setDragOverId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [savingCategory, setSavingCategory] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  const sortedCategories = useMemo(
-    () =>
-      [...categories].sort(
-        (a, b) =>
-          (orderDraft[a.id] ?? a.sortOrder ?? 0) - (orderDraft[b.id] ?? b.sortOrder ?? 0) ||
-          a.id - b.id
-      ),
-    [categories, orderDraft]
-  );
-
-  const selectedCategory = editingId ? categories.find((category) => category.id === editingId) : null;
+  const sortedCategories = useMemo(() => applyDisplayOrder(categories), [categories]);
+  const selectedCategory = editingId
+    ? sortedCategories.find((category) => category.id === editingId)
+    : null;
 
   const loadCategories = async () => {
     if (!accessToken) {
@@ -68,10 +89,7 @@ export function AdminCategories() {
     setError(null);
     try {
       const result = await apiGetAdminCategories(accessToken);
-      setCategories(result);
-      setOrderDraft(
-        Object.fromEntries(result.map((category) => [category.id, category.sortOrder ?? 0]))
-      );
+      setCategories(applyDisplayOrder(result));
     } catch (e) {
       const apiError = e as ApiError;
       setError(apiError.message ?? '카테고리 목록을 불러올 수 없습니다.');
@@ -97,13 +115,9 @@ export function AdminCategories() {
   const handleEdit = (category: AdminCategory) => {
     setEditingId(category.id);
     setForm({ name: category.name });
-    window.requestAnimationFrame(() => {
-      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      nameInputRef.current?.focus({ preventScroll: true });
-    });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
     if (!accessToken) {
@@ -117,63 +131,84 @@ export function AdminCategories() {
       return;
     }
 
-    setSaving(true);
+    setSavingCategory(true);
     try {
       if (editingId) {
         await apiUpdateAdminCategory(accessToken, editingId, {
           name,
-          sortOrder: orderDraft[editingId] ?? selectedCategory?.sortOrder ?? 0,
+          sortOrder: selectedCategory?.sortOrder ?? sortedCategories.length,
         });
-        await loadCategories();
         setToast({ message: '카테고리가 수정되었습니다.', type: 'success' });
       } else {
         await apiCreateAdminCategory(accessToken, {
           name,
-          sortOrder: sortedCategories.length,
+          sortOrder: sortedCategories.length + 1,
         });
-        await loadCategories();
-        setToast({ message: '카테고리가 추가되었습니다.', type: 'success' });
+        setToast({ message: '카테고리가 등록되었습니다.', type: 'success' });
       }
       resetForm();
+      await loadCategories();
     } catch (e) {
       const apiError = e as ApiError;
-      if (isNotImplementedError(apiError)) {
-        if (editingId) {
-          setCategories((prev) =>
-            prev.map((category) =>
-              category.id === editingId
-                ? { ...category, name, sortOrder: orderDraft[editingId] ?? category.sortOrder, updatedAt: new Date().toISOString() }
-                : category
-            )
-          );
-          setToast({ message: '카테고리가 수정되었습니다. (발표용 로컬 반영)', type: 'success' });
-        } else {
-          const nextId = Math.max(0, ...categories.map((category) => category.id)) + 1;
-          const sortOrder = sortedCategories.length;
-          setCategories((prev) => [
-            ...prev,
-            {
-              id: nextId,
-              name,
-              sortOrder,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            },
-          ]);
-          setOrderDraft((prev) => ({ ...prev, [nextId]: sortOrder }));
-          setToast({ message: '카테고리가 추가되었습니다. (발표용 로컬 반영)', type: 'success' });
-        }
-        resetForm();
-      } else {
-        setToast({ message: apiError.message ?? '카테고리 저장에 실패했습니다.', type: 'error' });
-      }
+      setToast({ message: apiError.message ?? '카테고리 저장에 실패했습니다.', type: 'error' });
     } finally {
-      setSaving(false);
+      setSavingCategory(false);
     }
   };
 
-  const handleOrderChange = (categoryId: number, sortOrder: number) => {
-    setOrderDraft((prev) => ({ ...prev, [categoryId]: sortOrder }));
+  const handleDelete = async (category: AdminCategory) => {
+    if (!accessToken) {
+      setToast({ message: '관리자 로그인이 필요합니다.', type: 'error' });
+      return;
+    }
+
+    if (!window.confirm(`'${category.name}' 카테고리를 삭제할까요?`)) return;
+
+    setDeletingId(category.id);
+    try {
+      await apiDeleteAdminCategory(accessToken, category.id);
+      setCategories((prev) => applyDisplayOrder(prev.filter((item) => item.id !== category.id)));
+      if (editingId === category.id) resetForm();
+      setToast({ message: '카테고리가 삭제되었습니다.', type: 'success' });
+    } catch (e) {
+      const apiError = e as ApiError;
+      if (isCategoryMissingError(apiError)) {
+        setCategories((prev) => applyDisplayOrder(prev.filter((item) => item.id !== category.id)));
+        if (editingId === category.id) resetForm();
+        setToast({ message: '카테고리가 삭제되었습니다.', type: 'success' });
+        return;
+      }
+      setToast({ message: apiError.message ?? '카테고리 삭제에 실패했습니다.', type: 'error' });
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleDragStart = (categoryId: number, e: DragEvent<HTMLElement>) => {
+    setDraggingId(categoryId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(categoryId));
+  };
+
+  const handleDragOver = (categoryId: number, e: DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverId(categoryId);
+  };
+
+  const handleDrop = (categoryId: number, e: DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    const activeId = Number(e.dataTransfer.getData('text/plain')) || draggingId;
+    if (activeId) {
+      setCategories((prev) => reorderCategories(prev, activeId, categoryId));
+    }
+    setDraggingId(null);
+    setDragOverId(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggingId(null);
+    setDragOverId(null);
   };
 
   const handleSaveOrder = async () => {
@@ -187,68 +222,28 @@ export function AdminCategories() {
       await apiUpdateAdminCategoryOrder(accessToken, {
         categoryOrders: sortedCategories.map((category, index) => ({
           categoryId: category.id,
-          sortOrder: index,
+          sortOrder: index + 1,
         })),
       });
       await loadCategories();
       setToast({ message: '카테고리 정렬 순서가 저장되었습니다.', type: 'success' });
     } catch (e) {
       const apiError = e as ApiError;
-      if (isNotImplementedError(apiError)) {
-        setCategories((prev) =>
-          prev.map((category) => {
-            const index = sortedCategories.findIndex((item) => item.id === category.id);
-            return index >= 0
-              ? { ...category, sortOrder: index, updatedAt: new Date().toISOString() }
-              : category;
-          })
-        );
-        setOrderDraft(
-          Object.fromEntries(sortedCategories.map((category, index) => [category.id, index]))
-        );
-        setToast({ message: '카테고리 정렬 순서가 저장되었습니다. (발표용 로컬 반영)', type: 'success' });
-      } else {
-        setToast({ message: apiError.message ?? '카테고리 정렬 저장에 실패했습니다.', type: 'error' });
-      }
+      setToast({ message: apiError.message ?? '카테고리 정렬 저장에 실패했습니다.', type: 'error' });
     } finally {
       setSavingOrder(false);
     }
   };
 
-  const handleDelete = async (category: AdminCategory) => {
-    if (!accessToken) {
-      setToast({ message: '관리자 로그인이 필요합니다.', type: 'error' });
-      return;
-    }
-
-    if (!window.confirm(`'${category.name}' 카테고리를 삭제할까요?`)) return;
-
-    try {
-      await apiDeleteAdminCategory(accessToken, category.id);
-      setCategories((prev) => prev.filter((item) => item.id !== category.id));
-      setOrderDraft((prev) => {
-        const next = { ...prev };
-        delete next[category.id];
-        return next;
-      });
-      if (editingId === category.id) resetForm();
-      setToast({ message: '카테고리가 삭제되었습니다.', type: 'success' });
-    } catch (e) {
-      const apiError = e as ApiError;
-      if (isNotImplementedError(apiError)) {
-        setCategories((prev) => prev.filter((item) => item.id !== category.id));
-        setOrderDraft((prev) => {
-          const next = { ...prev };
-          delete next[category.id];
-          return next;
-        });
-        if (editingId === category.id) resetForm();
-        setToast({ message: '카테고리가 삭제되었습니다. (발표용 로컬 반영)', type: 'success' });
-      } else {
-        setToast({ message: apiError.message ?? '카테고리 삭제에 실패했습니다.', type: 'error' });
-      }
-    }
-  };
+  const renderDragButton = () => (
+    <span
+      className="inline-flex h-9 w-9 cursor-grab items-center justify-center rounded border border-gray-200 bg-white text-gray-500 active:cursor-grabbing"
+      title="드래그해서 순서 변경"
+      aria-label="드래그해서 순서 변경"
+    >
+      <GripVertical size={18} />
+    </span>
+  );
 
   return (
     <>
@@ -258,28 +253,28 @@ export function AdminCategories() {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'center', marginBottom: '24px' }}>
           <div>
             <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '6px' }}>카테고리 관리</h1>
-            <p style={{ fontSize: '13px', color: '#666' }}>상품 노출 카테고리와 정렬 순서를 관리합니다.</p>
+            <p style={{ fontSize: '13px', color: '#666' }}>카테고리 목록을 조회하고 드래그로 노출 순서를 변경합니다.</p>
           </div>
           <Button variant="outline" onClick={loadCategories} disabled={loading}>
             새로고침
           </Button>
         </div>
 
+        {error && (
+          <div style={{ padding: '12px 16px', marginBottom: '16px', background: '#ffebee', color: '#c62828', borderRadius: '4px', fontSize: '13px' }}>
+            {error}
+          </div>
+        )}
+
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 360px), 1fr))',
             gap: '24px',
             alignItems: 'start',
           }}
         >
           <div>
-            {error && (
-              <div style={{ padding: '12px 16px', marginBottom: '16px', background: '#ffebee', color: '#c62828', borderRadius: '4px', fontSize: '13px' }}>
-                {error}
-              </div>
-            )}
-
             <div className="grid gap-3 sm:hidden">
               {loading ? (
                 <div className="rounded border border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
@@ -293,29 +288,28 @@ export function AdminCategories() {
                 sortedCategories.map((category) => (
                   <div
                     key={category.id}
+                    draggable={!savingOrder}
+                    onDragStart={(e) => handleDragStart(category.id, e)}
+                    onDragOver={(e) => handleDragOver(category.id, e)}
+                    onDrop={(e) => handleDrop(category.id, e)}
+                    onDragEnd={handleDragEnd}
                     className={cn(
-                      'rounded border border-gray-200 bg-white p-4',
-                      editingId === category.id && 'border-brand-200 bg-brand-50'
+                      'rounded border border-gray-200 bg-white p-4 transition',
+                      draggingId === category.id && 'opacity-50',
+                      dragOverId === category.id && draggingId !== category.id && 'border-brand-300 shadow-sm'
                     )}
                   >
                     <div className="mb-3 flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-bold text-gray-900">{category.name}</div>
-                        <div className="mt-1 text-xs text-gray-500">ID {category.id}</div>
+                      <div className="flex min-w-0 items-start gap-3">
+                        {renderDragButton()}
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-bold text-gray-900">{category.name}</div>
+                          <div className="mt-1 text-xs text-gray-500">순서 #{category.sortOrder}</div>
+                        </div>
                       </div>
-                      <label className="flex items-center gap-2 text-xs font-semibold text-gray-700">
-                        정렬
-                        <input
-                          type="number"
-                          value={orderDraft[category.id] ?? category.sortOrder ?? 0}
-                          onChange={(e) => handleOrderChange(category.id, Number(e.target.value))}
-                          className="h-8 w-16 rounded border border-gray-300 px-2 text-right text-xs"
-                        />
-                      </label>
+                      <div className="text-xs font-semibold text-gray-500">#{category.sortOrder}</div>
                     </div>
-                    <div className="mb-4 text-xs text-gray-500">
-                      수정일 {formatDate(category.updatedAt)}
-                    </div>
+                    <div className="mb-4 text-xs text-gray-500">수정일 {formatDate(category.updatedAt)}</div>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
@@ -327,9 +321,10 @@ export function AdminCategories() {
                       <button
                         type="button"
                         onClick={() => handleDelete(category)}
-                        className="h-10 rounded border border-red-200 bg-red-50 text-sm font-semibold text-red-700"
+                        disabled={deletingId === category.id}
+                        className="h-10 rounded border border-red-200 bg-red-50 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        삭제
+                        {deletingId === category.id ? '삭제 중...' : '삭제'}
                       </button>
                     </div>
                   </div>
@@ -338,7 +333,8 @@ export function AdminCategories() {
             </div>
 
             <div className="hidden sm:block" style={{ border: '1px solid #eee', borderRadius: '4px', overflowX: 'auto', background: 'white' }}>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px', borderBottom: '1px solid #eee', background: '#fff' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', padding: '12px', borderBottom: '1px solid #eee', background: '#fff' }}>
+                <span className="text-xs text-gray-500">행을 드래그해서 노출 순서를 바꿉니다.</span>
                 <Button type="button" variant="outline" size="sm" onClick={handleSaveOrder} disabled={loading || savingOrder || sortedCategories.length === 0}>
                   {savingOrder ? '정렬 저장 중...' : '정렬 저장'}
                 </Button>
@@ -346,22 +342,23 @@ export function AdminCategories() {
               <table style={{ width: '100%', minWidth: '560px', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#f9f9f9', borderBottom: '1px solid #eee' }}>
-                    <th style={{ padding: '12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', width: '60px' }}>ID</th>
+                    <th style={{ padding: '12px', textAlign: 'center', fontSize: '12px', fontWeight: '600', width: '58px' }}>이동</th>
+                    <th style={{ padding: '12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', width: '64px' }}>순서</th>
                     <th style={{ padding: '12px', textAlign: 'left', fontSize: '12px', fontWeight: '600' }}>카테고리명</th>
-                    <th style={{ padding: '12px', textAlign: 'right', fontSize: '12px', fontWeight: '600', width: '70px' }}>정렬</th>
+                    <th style={{ padding: '12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', width: '180px' }}>수정일</th>
                     <th style={{ padding: '12px', textAlign: 'center', fontSize: '12px', fontWeight: '600', width: '176px' }}>관리</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={4} style={{ padding: '40px', textAlign: 'center', color: '#666', fontSize: '13px' }}>
+                      <td colSpan={5} style={{ padding: '40px', textAlign: 'center', color: '#666', fontSize: '13px' }}>
                         로딩 중...
                       </td>
                     </tr>
                   ) : sortedCategories.length === 0 && !error ? (
                     <tr>
-                      <td colSpan={4} style={{ padding: '40px', textAlign: 'center', color: '#666', fontSize: '13px' }}>
+                      <td colSpan={5} style={{ padding: '40px', textAlign: 'center', color: '#666', fontSize: '13px' }}>
                         등록된 카테고리가 없습니다.
                       </td>
                     </tr>
@@ -369,26 +366,23 @@ export function AdminCategories() {
                     sortedCategories.map((category) => (
                       <tr
                         key={category.id}
+                        draggable={!savingOrder}
+                        onDragStart={(e) => handleDragStart(category.id, e)}
+                        onDragOver={(e) => handleDragOver(category.id, e)}
+                        onDrop={(e) => handleDrop(category.id, e)}
+                        onDragEnd={handleDragEnd}
                         style={{
                           borderBottom: '1px solid #eee',
-                          background: editingId === category.id ? '#fff8f1' : 'white',
+                          background: 'white',
+                          opacity: draggingId === category.id ? 0.5 : 1,
+                          outline: dragOverId === category.id && draggingId !== category.id ? '2px solid #fb923c' : 'none',
+                          cursor: savingOrder ? 'default' : 'grab',
                         }}
                       >
-                        <td style={{ padding: '12px', fontSize: '13px', color: '#666' }}>{category.id}</td>
-                        <td style={{ padding: '12px' }}>
-                          <div style={{ fontSize: '13px', fontWeight: '600' }}>{category.name}</div>
-                          <div style={{ marginTop: '4px', fontSize: '11px', color: '#999' }}>
-                            수정일 {formatDate(category.updatedAt)}
-                          </div>
-                        </td>
-                        <td style={{ padding: '12px', textAlign: 'right', fontSize: '13px' }}>
-                          <input
-                            type="number"
-                            value={orderDraft[category.id] ?? category.sortOrder ?? 0}
-                            onChange={(e) => handleOrderChange(category.id, Number(e.target.value))}
-                            style={{ width: '64px', padding: '7px 8px', border: '1px solid #ccc', borderRadius: '4px', textAlign: 'right', fontSize: '12px', boxSizing: 'border-box' }}
-                          />
-                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>{renderDragButton()}</td>
+                        <td style={{ padding: '12px', fontSize: '13px', color: '#666' }}>#{category.sortOrder}</td>
+                        <td style={{ padding: '12px', fontSize: '13px', fontWeight: 600 }}>{category.name}</td>
+                        <td style={{ padding: '12px', fontSize: '12px', color: '#777' }}>{formatDate(category.updatedAt)}</td>
                         <td style={{ padding: '12px', textAlign: 'center' }}>
                           <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
                             <button
@@ -401,9 +395,10 @@ export function AdminCategories() {
                             <button
                               type="button"
                               onClick={() => handleDelete(category)}
-                              style={{ minWidth: '64px', padding: '7px 12px', border: '1px solid #ffcdd2', borderRadius: '4px', background: '#fff5f5', color: '#c62828', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
+                              disabled={deletingId === category.id}
+                              style={{ minWidth: '64px', padding: '7px 12px', border: '1px solid #ffcdd2', borderRadius: '4px', background: '#fff5f5', color: '#c62828', cursor: deletingId === category.id ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 600, opacity: deletingId === category.id ? 0.6 : 1 }}
                             >
-                              삭제
+                              {deletingId === category.id ? '삭제 중...' : '삭제'}
                             </button>
                           </div>
                         </td>
@@ -420,37 +415,36 @@ export function AdminCategories() {
             </div>
           </div>
 
-          <form ref={formRef} onSubmit={handleSubmit} style={{ border: '1px solid #eee', borderRadius: '4px', padding: '20px', background: 'white', display: 'grid', gap: '16px', scrollMarginTop: '80px' }}>
+          <form onSubmit={handleSubmit} style={{ border: '1px solid #eee', borderRadius: '4px', padding: '20px', background: 'white', display: 'grid', gap: '16px' }}>
             <div>
               <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '6px' }}>
-                {editingId ? '카테고리 수정' : '카테고리 추가'}
+                {editingId ? '카테고리 수정' : '카테고리 등록'}
               </h2>
               <p style={{ fontSize: '12px', color: '#666' }}>
-                {selectedCategory ? `선택 ID: ${selectedCategory.id}` : '새 카테고리를 등록합니다.'}
+                {selectedCategory ? `선택 순서 #${selectedCategory.sortOrder}` : '새 카테고리는 마지막 순서로 추가됩니다.'}
               </p>
             </div>
 
             <div>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', fontWeight: '600' }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', fontWeight: 600 }}>
                 카테고리명
               </label>
               <input
-                ref={nameInputRef}
                 value={form.name}
                 onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-                placeholder="예: 스낵"
+                placeholder="예: 과자"
                 style={{ width: '100%', padding: '10px 12px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '14px', boxSizing: 'border-box' }}
               />
             </div>
 
-            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               {editingId && (
-                <Button type="button" variant="outline" onClick={resetForm} disabled={saving}>
+                <Button type="button" variant="outline" onClick={resetForm} disabled={savingCategory}>
                   취소
                 </Button>
               )}
-              <Button type="submit" disabled={saving}>
-                {saving ? '저장 중...' : editingId ? '수정 저장' : '추가'}
+              <Button type="submit" disabled={savingCategory}>
+                {savingCategory ? '저장 중...' : editingId ? '수정 저장' : '등록'}
               </Button>
             </div>
           </form>

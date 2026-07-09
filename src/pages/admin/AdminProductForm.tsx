@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   apiCreateAdminProduct,
+  apiDeleteFile,
   apiGetAdminCategories,
   apiGetAdminProduct,
+  apiUploadFile,
   apiUpdateAdminProduct,
   type AdminCategory,
   type AdminProductPayload,
@@ -12,6 +14,7 @@ import {
 import { useAdminAuthStore } from '@/stores/adminAuthStore';
 import { Button } from '@/components/ui/Button';
 import { Toast } from '@/components/ui/Toast';
+import { prepareImageForUpload } from '@/lib/imageFile';
 
 type Mode = 'create' | 'edit';
 
@@ -39,6 +42,7 @@ export function AdminProductForm({ mode }: { mode: Mode }) {
   const [form, setForm] = useState(emptyForm);
   const [isLoading, setIsLoading] = useState(mode === 'edit');
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
@@ -112,6 +116,29 @@ export function AdminProductForm({ mode }: { mode: Mode }) {
       imageUrl,
       status: form.status,
     };
+  };
+
+  const handleImageUpload = async (file: File | undefined) => {
+    if (!file || !accessToken) return;
+    const previousUrl = form.imageUrl.trim();
+
+    setIsUploading(true);
+    try {
+      const uploadFile = await prepareImageForUpload(file);
+      if (previousUrl) {
+        await apiDeleteFile(accessToken, previousUrl).catch(() => null);
+      }
+      const uploaded = await apiUploadFile(accessToken, uploadFile, 'product');
+      updateField('imageUrl', uploaded.url);
+      setToast({ message: '이미지가 업로드되었습니다.', type: 'success' });
+    } catch (error) {
+      setToast({
+        message: (error as { message?: string }).message ?? '이미지 업로드에 실패했습니다.',
+        type: 'error',
+      });
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -203,8 +230,26 @@ export function AdminProductForm({ mode }: { mode: Mode }) {
               </Field>
             </div>
 
-            <Field label="대표 이미지 URL" required>
-              <input value={form.imageUrl} onChange={(e) => updateField('imageUrl', e.target.value)} style={inputStyle} />
+            <Field label="대표 이미지" required>
+              <div style={{ display: 'grid', gap: '8px' }}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  disabled={isUploading}
+                  onChange={(e) => {
+                    void handleImageUpload(e.target.files?.[0]);
+                    e.currentTarget.value = '';
+                  }}
+                  style={inputStyle}
+                />
+                <input
+                  value={form.imageUrl}
+                  onChange={(e) => updateField('imageUrl', e.target.value)}
+                  placeholder="업로드된 이미지 URL"
+                  style={inputStyle}
+                />
+                {isUploading && <span style={{ fontSize: 12, color: '#64748b' }}>업로드 중...</span>}
+              </div>
             </Field>
 
             <Field label="상품 설명">
@@ -233,7 +278,7 @@ export function AdminProductForm({ mode }: { mode: Mode }) {
                 <img src={form.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
                 <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '13px' }}>
-                  이미지 URL을 입력하세요
+                  이미지를 업로드하세요
                 </div>
               )}
             </div>

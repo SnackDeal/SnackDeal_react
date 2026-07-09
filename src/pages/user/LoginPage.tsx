@@ -2,16 +2,21 @@ import { useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button, Input } from '@/components/ui';
 import { AuthShell } from '@/components/common/AuthShell';
+import { GoogleLoginButton } from '@/components/common/GoogleLoginButton';
+import { useAdminAuthStore } from '@/stores/adminAuthStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useToastStore } from '@/stores/toastStore';
-import { login, isEmail, type ApiError } from '@/lib/mockAuth';
-import { GoogleLoginButton } from '@/components/common/GoogleLoginButton';
-import { apiLogin, apiGetMe } from '@/lib/api';
+import { apiGetMe, apiLogin, type ApiError } from '@/lib/api';
+
+function isEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { setSession, setSessionFromApi } = useAuthStore();
+  const { setSessionFromApi } = useAuthStore();
+  const adminLogout = useAdminAuthStore((state) => state.adminLogout);
   const showToast = useToastStore((s) => s.show);
 
   const [email, setEmail] = useState('');
@@ -24,37 +29,28 @@ export default function LoginPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
+
     if (!email || !password) {
       setError('이메일과 비밀번호를 입력해주세요.');
       return;
     }
+
     if (!isEmail(email)) {
       setError('이메일 형식이 올바르지 않습니다.');
       return;
     }
+
     setLoading(true);
     try {
-      // 백엔드 연동 시도
       const tokens = await apiLogin(email, password);
       const me = await apiGetMe(tokens.accessToken);
+      adminLogout();
       setSessionFromApi(tokens, me);
       showToast(`${me.name}님 환영합니다.`, 'success');
       navigate(from, { replace: true });
     } catch (apiErr) {
-      const code = (apiErr as ApiError).code;
-      // 네트워크 에러면 mock fallback, 인증 실패면 에러 표시
-      if (code === 'NETWORK_ERROR') {
-        try {
-          const result = await login(email, password);
-          setSession(result);
-          showToast(`${result.user.name}님 환영합니다.`, 'success');
-          navigate(from, { replace: true });
-        } catch (mockErr) {
-          setError((mockErr as ApiError).message ?? '로그인에 실패했습니다.');
-        }
-      } else {
-        setError((apiErr as ApiError).message ?? '로그인에 실패했습니다.');
-      }
+      const err = apiErr as ApiError;
+      setError(err.message ?? '로그인에 실패했습니다.');
     } finally {
       setLoading(false);
     }
@@ -100,7 +96,7 @@ export default function LoginPage() {
       </form>
 
       <p className="mt-5 rounded-lg bg-gray-50 px-3 py-2.5 text-xs leading-relaxed text-gray-400">
-        데모 계정 · user@snackdeal.com (비밀번호는 아무 값이나 입력)
+        테스트 계정: user@snackdeal.com
       </p>
     </AuthShell>
   );
@@ -114,7 +110,7 @@ function SocialLoginButtons() {
           <div className="w-full border-t border-gray-300" />
         </div>
         <div className="relative flex justify-center text-sm">
-          <span className="bg-white px-2 text-gray-500">소셜 계정으로 계속하기</span>
+          <span className="bg-white px-2 text-gray-500">또는</span>
         </div>
       </div>
       <GoogleLoginButton />

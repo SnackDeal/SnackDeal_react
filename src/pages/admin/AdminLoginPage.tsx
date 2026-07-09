@@ -1,21 +1,25 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAdminAuthStore } from '@/stores/adminAuthStore';
+import { useAuthStore } from '@/stores/authStore';
 import { Button } from '@/components/ui/Button';
 import { Toast } from '@/components/ui/Toast';
 import { apiAdminLogin, apiGetMe, type ApiError } from '@/lib/api';
 
 export default function AdminLoginPage() {
   const navigate = useNavigate();
-  const { adminSession, setAdminSession, setTokens } = useAdminAuthStore();
+  const location = useLocation();
+  const { adminSession, accessToken, setAdminSession, setTokens, adminLogout } = useAdminAuthStore();
+  const userLogout = useAuthStore((state) => state.logout);
   const [email, setEmail] = useState('admin@snackdeal.io');
   const [password, setPassword] = useState('admin1234');
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const from = (location.state as { from?: string })?.from ?? '/admin';
 
   useEffect(() => {
-    if (adminSession) navigate('/admin');
-  }, [adminSession, navigate]);
+    if (adminSession?.role === 'ADMIN' && accessToken) navigate(from, { replace: true });
+  }, [adminSession, accessToken, from, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,11 +32,13 @@ export default function AdminLoginPage() {
       const tokens = await apiAdminLogin(email, password);
       const me = await apiGetMe(tokens.accessToken);
       if (me.role !== 'ADMIN') throw { code: 'FORBIDDEN', message: '관리자 계정이 아닙니다.' } as ApiError;
+      userLogout();
       setTokens(tokens);
       setAdminSession({ id: me.id, email: me.email, name: me.name, role: 'ADMIN' });
       setToast({ message: '관리자 로그인 성공', type: 'success' });
-      setTimeout(() => navigate('/admin'), 800);
+      setTimeout(() => navigate(from, { replace: true }), 800);
     } catch (e) {
+      adminLogout();
       const ae = e as ApiError;
       setToast({ message: ae.message ?? '이메일 또는 비밀번호가 맞지 않습니다.', type: 'error' });
     } finally {

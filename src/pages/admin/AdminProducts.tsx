@@ -10,6 +10,7 @@ import {
   type ProductStatus,
 } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
+import { AdminPagination, type AdminPageSize } from '@/components/admin/Pagination';
 
 const PRODUCT_UPDATED_EVENT = 'snackdeal-products-updated';
 
@@ -36,6 +37,9 @@ export default function AdminProductsPage() {
   });
   const [filterLowStock, setFilterLowStock] = useState(false);
   const [sort, setSort] = useState<'latest' | 'price_asc' | 'price_desc' | 'stock_asc' | 'stock_desc'>('latest');
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState<AdminPageSize>(10);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -65,24 +69,29 @@ export default function AdminProductsPage() {
         status: selectedStatuses.length === 1 ? selectedStatuses[0] : undefined,
         lowStock: filterLowStock,
         sort: sort === 'stock_asc' || sort === 'stock_desc' ? 'latest' : sort,
-        page: 1,
-        size: 100,
+        page: page + 1,
+        size: pageSize,
       });
       const visibleRows = result.items
         .filter((item) => item.status !== 'DELETED')
         .filter((item) => selectedStatuses.includes(item.status));
       setProducts(visibleRows);
+      setTotal(result.total ?? visibleRows.length);
     } catch (e) {
       setError((e as { message?: string }).message ?? '상품 목록을 불러올 수 없습니다.');
       setProducts([]);
     } finally {
       if (!silent) setIsLoading(false);
     }
-  }, [accessToken, adminSession, filterCategory, filterLowStock, filterStatus, searchKeyword, sort]);
+  }, [accessToken, adminSession, filterCategory, filterLowStock, filterStatus, searchKeyword, sort, page, pageSize]);
 
   useEffect(() => {
     void loadProducts();
   }, [loadProducts]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [searchKeyword, filterCategory, filterStatus, filterLowStock, pageSize]);
 
   if (!adminSession) return null;
 
@@ -407,6 +416,18 @@ export default function AdminProductsPage() {
               </tbody>
             </table>
           </div>
+        )}
+
+        {!isLoading && results.length > 0 && (
+          <AdminPagination
+            page={page}
+            totalPages={Math.ceil(total / pageSize)}
+            total={total}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            unitLabel="개"
+          />
         )}
       </div>
     </>
