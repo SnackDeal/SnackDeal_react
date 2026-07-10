@@ -962,6 +962,7 @@ export interface OrderPreparePayload {
   deliveryId?: number;
   shipping?: ShippingRequest | null;
   userCouponId?: number | null;
+  shippingFee?: number;
 }
 
 export interface OrderPrepareResponse {

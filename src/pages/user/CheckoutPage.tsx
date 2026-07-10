@@ -6,6 +6,7 @@ import { useDeliveryStore } from '@/stores/deliveryStore';
 import {
   apiCompleteOrder,
   apiGetMyCoupons,
+  apiGetProduct,
   apiGetPublicShippingPolicy,
   apiPrepareOrder,
   type MyCoupon,
@@ -42,6 +43,11 @@ export default function CheckoutPage() {
   const navigate = useNavigate();
   const { member, accessToken } = useAuthStore();
   const { items: cartItems, removeItems } = useCartStore();
+  const patchCartItem = (productId: number, patch: Partial<CartItem>) => {
+    useCartStore.setState((state) => ({
+      items: state.items.map((i) => (i.product_id === productId ? { ...i, ...patch } : i)),
+    }));
+  };
   const { addresses, getDefaultAddress } = useDeliveryStore();
 
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
@@ -54,6 +60,12 @@ export default function CheckoutPage() {
   const [selectedCouponId, setSelectedCouponId] = useState<number | null>(null);
   const [shippingPolicy, setShippingPolicy] = useState<ShippingPolicy | null>(null);
   const [isShippingPolicyLoading, setIsShippingPolicyLoading] = useState(true);
+  const [syncedItems, setSyncedItems] = useState<CartItem[] | null>(null);
+  const [priceChanges, setPriceChanges] = useState<
+    { productId: number; name: string; oldPrice: number; newPrice: number }[]
+  >([]);
+  const [priceConfirmed, setPriceConfirmed] = useState(false);
+  const [isPriceSyncing, setIsPriceSyncing] = useState(true);
   const checkoutProductIds = useMemo(() => {
     try {
       const raw = sessionStorage.getItem('checkout-product-ids');
@@ -80,13 +92,14 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (isPaymentCompleted) return;
 
+    const timers: ReturnType<typeof setTimeout>[] = [];
     if (!member) {
       setToast({ message: '로그인이 필요합니다.', type: 'error' });
-      setTimeout(() => navigate('/login'), 2000);
+      timers.push(setTimeout(() => navigate('/login'), 2000));
     }
     if (checkoutItems.length === 0) {
       setToast({ message: '장바구니가 비어있습니다.', type: 'error' });
-      setTimeout(() => navigate('/cart'), 2000);
+      timers.push(setTimeout(() => navigate('/cart'), 2000));
     }
 
     // Set default address
@@ -94,6 +107,10 @@ export default function CheckoutPage() {
     if (defaultAddr && addresses.length > 0) {
       setSelectedAddressId(defaultAddr.id);
     }
+
+    return () => {
+      timers.forEach(clearTimeout);
+    };
   }, [member, checkoutItems.length, navigate, addresses, getDefaultAddress, isPaymentCompleted]);
 
   useEffect(() => {
@@ -147,6 +164,68 @@ export default function CheckoutPage() {
     };
   }, []);
 
+  const checkoutIdsKey = checkoutItems.map((i) => i.product_id).join(',');
+  useEffect(() => {
+    if (checkoutItems.length === 0) return;
+
+    let ignore = false;
+    setIsPriceSyncing(true);
+    setPriceConfirmed(false);
+    setPriceChanges([]);
+
+    Promise.all(
+      checkoutItems.map((item) =>
+        apiGetProduct(item.product_id)
+          .then((p) => ({ item, product: p }))
+          .catch(() => ({ item, product: null as null }))
+      )
+    ).then((results) => {
+      if (ignore) return;
+      const changes: { productId: number; name: string; oldPrice: number; newPrice: number }[] = [];
+      const next: CartItem[] = results.map(({ item, product }) => {
+        if (!product) return item;
+        const priceChanged = product.price !== item.price;
+        if (priceChanged) {
+          changes.push({
+            productId: item.product_id,
+            name: product.name || item.product_name,
+            oldPrice: item.price,
+            newPrice: product.price,
+          });
+        }
+        return {
+          ...item,
+          product_name: product.name || item.product_name,
+          product_image: product.image_url || product.thumbnail_url || item.product_image,
+          price: product.price,
+          max_stock: product.stock,
+          is_soldout: product.is_soldout,
+        };
+      });
+      setSyncedItems(next);
+      setPriceChanges(changes);
+      setPriceConfirmed(changes.length === 0);
+      // 장바구니로 진입한 경우 cartStore 도 최신 상품 정보로 동기화 (직접구매는 세션 데이터라 무시)
+      if (directCheckoutItems.length === 0) {
+        next.forEach((n) =>
+          patchCartItem(n.product_id, {
+            product_name: n.product_name,
+            product_image: n.product_image,
+            price: n.price,
+            max_stock: n.max_stock,
+            is_soldout: n.is_soldout,
+          })
+        );
+      }
+      setIsPriceSyncing(false);
+    });
+
+    return () => {
+      ignore = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkoutIdsKey]);
+
   if (!member || checkoutItems.length === 0) {
     return (
       <>
@@ -163,7 +242,16 @@ export default function CheckoutPage() {
     );
   }
 
-  const productAmount = checkoutItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  if (isPriceSyncing) {
+    return (
+      <>
+        <div style={{ padding: '40px', textAlign: 'center' }}>상품 가격 확인 중...</div>
+      </>
+    );
+  }
+
+  const displayItems = syncedItems ?? checkoutItems;
+  const productAmount = displayItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const shippingFee = getShippingFeeForAmount(shippingPolicy, productAmount);
   const selectedCoupon = myCoupons.find((c) => c.userCouponId === selectedCouponId) ?? null;
   const now = new Date();
@@ -177,7 +265,8 @@ export default function CheckoutPage() {
     }
     return Math.floor((productAmount * selectedCoupon.discountValue) / 100);
   })();
-  const estimatedFinalAmount = calculatePayableAmount(productAmount, shippingFee, discountAmount);
+  const estimatedFinalAmount =
+    Math.max(0, productAmount - discountAmount) + Math.max(0, shippingFee);
 
   const selectedAddr = selectedAddressId ? addresses.find((a) => a.id === selectedAddressId) : null;
 
@@ -196,6 +285,11 @@ export default function CheckoutPage() {
       return;
     }
 
+    if (!priceConfirmed) {
+      setToast({ message: '변경된 상품 가격을 먼저 확인해주세요.', type: 'error' });
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
@@ -208,7 +302,7 @@ export default function CheckoutPage() {
       };
 
       const prepared = await apiPrepareOrder(accessToken, {
-        items: checkoutItems.map((item) => ({
+        items: displayItems.map((item) => ({
           productId: item.product_id,
           quantity: item.quantity,
         })),
@@ -221,9 +315,10 @@ export default function CheckoutPage() {
           deliveryRequest,
         },
         userCouponId: selectedCouponId,
+        shippingFee,
       });
 
-      await requestPortOnePayment(prepared, getOrderName(checkoutItems));
+      await requestPortOnePayment(prepared, getOrderName(displayItems));
       const completed = await apiCompleteOrder(accessToken, prepared.paymentId);
 
       setIsPaymentCompleted(true);
@@ -263,11 +358,53 @@ export default function CheckoutPage() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '32px' }}>
           {/* Main */}
           <div>
+            {priceChanges.length > 0 && (
+              <div
+                style={{
+                  marginBottom: '24px',
+                  padding: '16px',
+                  border: '1px solid #f59e0b',
+                  background: '#fffbeb',
+                  borderRadius: '4px',
+                }}
+              >
+                <div style={{ fontWeight: 700, color: '#b45309', marginBottom: '8px', fontSize: '14px' }}>
+                  상품 가격이 변경되었습니다
+                </div>
+                <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '13px', color: '#78350f' }}>
+                  {priceChanges.map((c) => (
+                    <li key={c.productId} style={{ marginBottom: '4px' }}>
+                      {c.name}: ₩{c.oldPrice.toLocaleString()} → <b>₩{c.newPrice.toLocaleString()}</b>
+                    </li>
+                  ))}
+                </ul>
+                {!priceConfirmed && (
+                  <button
+                    type="button"
+                    onClick={() => setPriceConfirmed(true)}
+                    style={{
+                      marginTop: '12px',
+                      padding: '8px 14px',
+                      border: 'none',
+                      borderRadius: '4px',
+                      background: '#ea580c',
+                      color: 'white',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    변경된 가격으로 계속 진행
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Order Items */}
             <section style={{ marginBottom: '40px' }}>
               <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px' }}>주문 상품</h2>
               <div style={{ border: '1px solid #eee', borderRadius: '4px', overflow: 'hidden' }}>
-                {checkoutItems.map((item, idx) => (
+                {displayItems.map((item, idx) => (
                   <div
                     key={item.product_id}
                     style={{
@@ -275,7 +412,7 @@ export default function CheckoutPage() {
                       gridTemplateColumns: '60px 1fr 60px 80px',
                       gap: '12px',
                       padding: '16px',
-                      borderBottom: idx < checkoutItems.length - 1 ? '1px solid #eee' : 'none',
+                      borderBottom: idx < displayItems.length - 1 ? '1px solid #eee' : 'none',
                       alignItems: 'center',
                     }}
                   >
@@ -528,10 +665,14 @@ export default function CheckoutPage() {
 
               <Button
                 onClick={handlePayment}
-                disabled={isProcessing}
-                style={{ width: '100%', opacity: isProcessing ? 0.6 : 1 }}
+                disabled={isProcessing || !priceConfirmed}
+                style={{ width: '100%', opacity: isProcessing || !priceConfirmed ? 0.6 : 1 }}
               >
-                {isProcessing ? '결제 진행중...' : '결제하기'}
+                {isProcessing
+                  ? '결제 진행중...'
+                  : !priceConfirmed
+                    ? '가격 변경 확인 필요'
+                    : '결제하기'}
               </Button>
 
               <button
@@ -606,35 +747,15 @@ async function requestPortOnePayment(prepared: OrderPrepareResponse, orderName: 
 }
 
 function resolvePayableAmount(prepared: OrderPrepareResponse) {
-  const productAmount = prepared.productAmount;
-  const shippingFee = prepared.shippingFee;
-  const hasBreakdown =
-    typeof productAmount === 'number' &&
-    Number.isFinite(productAmount) &&
-    typeof shippingFee === 'number' &&
-    Number.isFinite(shippingFee);
-
-  if (hasBreakdown) {
-    const discountAmount =
-      typeof prepared.discountAmount === 'number' && Number.isFinite(prepared.discountAmount)
-        ? prepared.discountAmount
-        : 0;
-
-    return calculatePayableAmount(productAmount, shippingFee, discountAmount);
+  // 서버가 PortOne 에 등록한 금액과 일치해야 PG 가 결제창을 띄움.
+  // `amount` 는 통상 PortOne 에 등록된 금액, `finalAmount` 는 서버 내부 최종 계산값.
+  if (typeof prepared.amount === 'number' && Number.isFinite(prepared.amount)) {
+    return Math.max(0, prepared.amount);
   }
 
   if (typeof prepared.finalAmount === 'number' && Number.isFinite(prepared.finalAmount)) {
     return Math.max(0, prepared.finalAmount);
   }
 
-  if (typeof prepared.amount === 'number' && Number.isFinite(prepared.amount)) {
-    return Math.max(0, prepared.amount);
-  }
-
   return Number.NaN;
-}
-
-function calculatePayableAmount(productAmount: number, shippingFee: number, discountAmount: number) {
-  const payableProductAmount = Math.max(0, productAmount - discountAmount);
-  return payableProductAmount + Math.max(0, shippingFee);
 }

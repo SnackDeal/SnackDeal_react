@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useCartStore } from '@/stores/cartStore';
-import { apiGetPublicShippingPolicy, type ShippingPolicy } from '@/lib/api';
+import { apiGetProduct, apiGetPublicShippingPolicy, type ShippingPolicy } from '@/lib/api';
 import { getShippingFeeForAmount } from '@/lib/shipping';
 import { Button } from '@/components/ui/Button';
 import { Toast } from '@/components/ui/Toast';
@@ -21,6 +21,43 @@ export default function CartPage() {
       setTimeout(() => navigate('/login'), 2000);
     }
   }, [member, navigate]);
+
+  useEffect(() => {
+    const currentItems = useCartStore.getState().items;
+    if (currentItems.length === 0) return;
+
+    let ignore = false;
+    Promise.all(
+      currentItems.map((it) =>
+        apiGetProduct(it.product_id)
+          .then((p) => ({ id: it.product_id, product: p }))
+          .catch(() => ({ id: it.product_id, product: null as null }))
+      )
+    ).then((results) => {
+      if (ignore) return;
+      useCartStore.setState((state) => ({
+        items: state.items.map((ci) => {
+          const found = results.find((r) => r.id === ci.product_id);
+          if (!found || !found.product) return ci;
+          const p = found.product;
+          return {
+            ...ci,
+            product_name: p.name || ci.product_name,
+            product_image: p.image_url || p.thumbnail_url || ci.product_image,
+            price: p.price,
+            max_stock: p.stock,
+            is_soldout: p.is_soldout,
+          };
+        }),
+      }));
+    });
+
+    return () => {
+      ignore = true;
+    };
+    // 최초 진입 시 1회만 동기화
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     let ignore = false;
