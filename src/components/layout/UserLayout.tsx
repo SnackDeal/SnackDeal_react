@@ -45,6 +45,7 @@ const CHATBOT_ERROR_MESSAGE =
 export function UserLayout() {
   const navigate = useNavigate();
   const cartCount = useCartStore((s) => s.getTotalItems());
+  const clearCart = useCartStore((s) => s.clearCart);
   const { member, accessToken, logout } = useAuthStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -61,6 +62,7 @@ export function UserLayout() {
     if (accessToken) {
       try { await apiLogout(accessToken); } catch { /* ignore */ }
     }
+    clearCart();
     logout();
     setIsMobileMenuOpen(false);
     navigate('/', { replace: true });
@@ -166,7 +168,7 @@ export function UserLayout() {
           onClick={() => setIsMobileMenuOpen(false)}
           className={mobileNavLinkClass}
         >
-          장바구니{cartCount > 0 ? ` (${cartCount})` : ''}
+          장바구니{member && cartCount > 0 ? ` (${cartCount})` : ''}
         </NavLink>
         <NavLink
           to={myPageTarget}
@@ -270,7 +272,7 @@ export function UserLayout() {
               aria-label="장바구니"
             >
               <ShoppingCart size={20} />
-              {cartCount > 0 && (
+              {member && cartCount > 0 && (
                 <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-semibold text-white">
                   {cartCount}
                 </span>

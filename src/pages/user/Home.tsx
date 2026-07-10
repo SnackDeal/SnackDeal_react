@@ -101,8 +101,8 @@ export function Home() {
       <HeroBanner />
 
       <Section
-        title="새로 들어온 상품"
-        subtitle="최근 등록된 상품을 먼저 보여드려요"
+        title="가장 많이팔린 상품"
+        subtitle="가장 많이팔린 상품을 먼저 보여드려요"
         moreTo="/products"
       >
         <ProductGrid products={topProducts} />
