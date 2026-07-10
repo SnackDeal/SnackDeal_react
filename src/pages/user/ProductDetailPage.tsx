@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useProductStore } from '@/stores/productStore';
 import { useCartStore } from '@/stores/cartStore';
 import { apiGetProduct, apiGetPublicShippingPolicy, type ShippingPolicy } from '@/lib/api';
+import { getDisplayShippingBaseFee } from '@/lib/shipping';
 import { Button } from '@/components/ui/Button';
 import { Toast } from '@/components/ui/Toast';
 
@@ -35,7 +36,7 @@ export default function ProductDetailPage() {
       }
     };
 
-    loadProduct();
+    void loadProduct();
   }, [productId, setSelectedProduct, setLoading, navigate]);
 
   useEffect(() => {
@@ -55,7 +56,7 @@ export default function ProductDetailPage() {
       max_stock: selectedProduct.stock,
       is_soldout: selectedProduct.is_soldout,
     });
-    setToast({ message: '장바구니에 추가되었습니다.', type: 'success' });
+    setToast({ message: '장바구니에 추가했습니다.', type: 'success' });
     setQuantity(1);
   };
 
@@ -80,41 +81,29 @@ export default function ProductDetailPage() {
   };
 
   if (isLoading) {
-    return (
-      <>
-        <div style={{ padding: '40px', textAlign: 'center' }}>로딩중...</div>
-      </>
-    );
+    return <div style={{ padding: '40px', textAlign: 'center' }}>로딩중...</div>;
   }
 
   if (!selectedProduct) {
     return (
-      <>
-        <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
-          상품을 찾을 수 없습니다.
-        </div>
-      </>
+      <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
+        상품을 찾을 수 없습니다.
+      </div>
     );
   }
 
-  const maxQuantity = selectedProduct.stock;
+  const maxQuantity = Math.max(selectedProduct.stock, 1);
   const totalPrice = selectedProduct.price * quantity;
   const imageUrl = isRenderableImageUrl(selectedProduct.image_url)
     ? selectedProduct.image_url
     : '';
+  const isLowStock = !selectedProduct.is_soldout && selectedProduct.stock > 0 && selectedProduct.stock < 10;
 
   return (
     <>
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-        {/* Breadcrumb */}
         <div style={{ fontSize: '12px', color: '#666', marginBottom: '24px' }}>
           <button
             onClick={() => navigate('/products')}
@@ -132,7 +121,6 @@ export default function ProductDetailPage() {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px' }}>
-          {/* Image */}
           <div style={{ position: 'relative' }}>
             {imageUrl ? (
               <img
@@ -167,27 +155,18 @@ export default function ProductDetailPage() {
                 style={{
                   position: 'absolute',
                   inset: 0,
-                  background: 'rgba(0,0,0,0.5)',
+                  background: 'rgba(0, 0, 0, 0.5)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   borderRadius: '4px',
                 }}
               >
-                <div
-                  style={{
-                    fontSize: '32px',
-                    fontWeight: 'bold',
-                    color: 'white',
-                  }}
-                >
-                  품절
-                </div>
+                <div style={{ fontSize: '32px', fontWeight: 'bold', color: 'white' }}>품절</div>
               </div>
             )}
           </div>
 
-          {/* Info */}
           <div>
             <div style={{ marginBottom: '24px' }}>
               <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
@@ -200,7 +179,14 @@ export default function ProductDetailPage() {
                 ₩{selectedProduct.price.toLocaleString()}
               </div>
 
-              <div style={{ borderTop: '1px solid #eee', borderBottom: '1px solid #eee', padding: '16px 0', marginBottom: '24px' }}>
+              <div
+                style={{
+                  borderTop: '1px solid #eee',
+                  borderBottom: '1px solid #eee',
+                  padding: '16px 0',
+                  marginBottom: '24px',
+                }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
                   <span style={{ color: '#666' }}>재고</span>
                   <span
@@ -212,14 +198,30 @@ export default function ProductDetailPage() {
                     {selectedProduct.is_soldout ? '품절' : `${selectedProduct.stock}개`}
                   </span>
                 </div>
+                {isLowStock && (
+                  <div
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      borderRadius: '9999px',
+                      background: '#fee2e2',
+                      color: '#b91c1c',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      padding: '6px 10px',
+                    }}
+                  >
+                    임박 상품 {selectedProduct.stock}개 남음
+                  </div>
+                )}
               </div>
-
             </div>
 
-            {/* Quantity & Purchase */}
             <div style={{ borderTop: '1px solid #eee', paddingTop: '24px' }}>
               <div style={{ marginBottom: '24px' }}>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333' }}>
+                <label
+                  style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333' }}
+                >
                   수량
                 </label>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -231,12 +233,13 @@ export default function ProductDetailPage() {
                       height: '40px',
                       border: '1px solid #ccc',
                       borderRadius: '4px',
-                      cursor: quantity === 1 || selectedProduct.is_soldout ? 'not-allowed' : 'pointer',
+                      cursor:
+                        quantity === 1 || selectedProduct.is_soldout ? 'not-allowed' : 'pointer',
                       opacity: quantity === 1 || selectedProduct.is_soldout ? 0.5 : 1,
                       fontSize: '16px',
                     }}
                   >
-                    −
+                    -
                   </button>
                   <input
                     type="number"
@@ -266,7 +269,10 @@ export default function ProductDetailPage() {
                       height: '40px',
                       border: '1px solid #ccc',
                       borderRadius: '4px',
-                      cursor: quantity === maxQuantity || selectedProduct.is_soldout ? 'not-allowed' : 'pointer',
+                      cursor:
+                        quantity === maxQuantity || selectedProduct.is_soldout
+                          ? 'not-allowed'
+                          : 'pointer',
                       opacity: quantity === maxQuantity || selectedProduct.is_soldout ? 0.5 : 1,
                       fontSize: '16px',
                     }}
@@ -276,7 +282,6 @@ export default function ProductDetailPage() {
                 </div>
               </div>
 
-              {/* Total Price */}
               <div
                 style={{
                   background: '#f5f5f5',
@@ -292,7 +297,6 @@ export default function ProductDetailPage() {
                 </div>
               </div>
 
-              {/* Buttons */}
               <div style={{ display: 'flex', gap: '12px' }}>
                 <Button
                   onClick={handleAddToCart}
@@ -314,7 +318,6 @@ export default function ProductDetailPage() {
           </div>
         </div>
 
-        {/* Info Sections */}
         <div style={{ marginTop: '60px', borderTop: '1px solid #eee' }}>
           <DetailSection title="상품설명">
             <p style={{ color: '#666', lineHeight: '1.8', whiteSpace: 'pre-wrap' }}>
@@ -326,24 +329,22 @@ export default function ProductDetailPage() {
             <div style={{ color: '#666', lineHeight: '1.8' }}>
               {shippingPolicy ? (
                 <>
-                  <p>• 배송료: ₩{shippingPolicy.baseFee.toLocaleString()}</p>
-                  <p>
-                    • 무료배송 기준: ₩{shippingPolicy.freeThreshold.toLocaleString()} 이상 구매 시
-                  </p>
+                  <p>기본 배송비: ₩{getDisplayShippingBaseFee(shippingPolicy).toLocaleString()}</p>
+                  <p>무료배송 기준: ₩{shippingPolicy.freeThreshold.toLocaleString()} 이상 구매 시</p>
                 </>
               ) : (
-                <p>• 배송비 정책을 불러오는 중입니다.</p>
+                <p>배송비 정책을 불러오는 중입니다.</p>
               )}
-              <p>• 배송기간: 주문 후 1~2일 내 배송</p>
-              <p>• 주말/공휴일 제외</p>
+              <p>배송기간: 주문 후 1~2일 내 출고</p>
+              <p>주말 및 공휴일은 제외됩니다.</p>
             </div>
           </DetailSection>
 
           <DetailSection title="교환/환불">
             <div style={{ color: '#666', lineHeight: '1.8' }}>
-              <p>• 상품 수령 후 7일 이내 교환/환불 가능</p>
-              <p>• 미개봉 상태의 상품에 한함</p>
-              <p>• 단순 변심으로 인한 교환/환불 배송료는 고객 부담</p>
+              <p>상품 수령 후 7일 이내 교환 및 환불 가능합니다.</p>
+              <p>미개봉 상태의 상품에 한해 처리됩니다.</p>
+              <p>단순 변심에 의한 교환 및 환불 배송비는 고객 부담입니다.</p>
             </div>
           </DetailSection>
         </div>
