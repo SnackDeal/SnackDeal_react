@@ -177,7 +177,7 @@ export default function CheckoutPage() {
     }
     return Math.floor((productAmount * selectedCoupon.discountValue) / 100);
   })();
-  const estimatedFinalAmount = Math.max(0, productAmount + shippingFee - discountAmount);
+  const estimatedFinalAmount = calculatePayableAmount(productAmount, shippingFee, discountAmount);
 
   const selectedAddr = selectedAddressId ? addresses.find((a) => a.id === selectedAddressId) : null;
 
@@ -567,11 +567,21 @@ function getOrderName(items: CartItem[]) {
 }
 
 async function requestPortOnePayment(prepared: OrderPrepareResponse, orderName: string) {
+  const payableAmount = resolvePayableAmount(prepared);
+
+  if (payableAmount === 0) {
+    return;
+  }
+
   if (!window.PortOne?.requestPayment) {
     throw new Error('결제 SDK가 로드되지 않았습니다. PortOne SDK 설정을 확인해주세요.');
   }
 
-  if (typeof prepared.amount !== 'number') {
+  if (payableAmount < 0) {
+    throw new Error('결제 금액이 올바르지 않습니다. 주문 준비 응답을 확인해주세요.');
+  }
+
+  if (typeof payableAmount !== 'number' || Number.isNaN(payableAmount)) {
     throw new Error('결제 금액을 확인할 수 없습니다. 주문 준비 응답을 확인해주세요.');
   }
 
@@ -580,7 +590,7 @@ async function requestPortOnePayment(prepared: OrderPrepareResponse, orderName: 
     channelKey: prepared.channelKey,
     paymentId: prepared.paymentId,
     orderName,
-    totalAmount: prepared.amount,
+    totalAmount: payableAmount,
     currency: 'CURRENCY_KRW',
     payMethod: 'CARD',
     customer: {
@@ -593,4 +603,38 @@ async function requestPortOnePayment(prepared: OrderPrepareResponse, orderName: 
   if (payment?.code) {
     throw new Error(payment.message ?? '결제가 취소되었거나 실패했습니다.');
   }
+}
+
+function resolvePayableAmount(prepared: OrderPrepareResponse) {
+  const productAmount = prepared.productAmount;
+  const shippingFee = prepared.shippingFee;
+  const hasBreakdown =
+    typeof productAmount === 'number' &&
+    Number.isFinite(productAmount) &&
+    typeof shippingFee === 'number' &&
+    Number.isFinite(shippingFee);
+
+  if (hasBreakdown) {
+    const discountAmount =
+      typeof prepared.discountAmount === 'number' && Number.isFinite(prepared.discountAmount)
+        ? prepared.discountAmount
+        : 0;
+
+    return calculatePayableAmount(productAmount, shippingFee, discountAmount);
+  }
+
+  if (typeof prepared.finalAmount === 'number' && Number.isFinite(prepared.finalAmount)) {
+    return Math.max(0, prepared.finalAmount);
+  }
+
+  if (typeof prepared.amount === 'number' && Number.isFinite(prepared.amount)) {
+    return Math.max(0, prepared.amount);
+  }
+
+  return Number.NaN;
+}
+
+function calculatePayableAmount(productAmount: number, shippingFee: number, discountAmount: number) {
+  const payableProductAmount = Math.max(0, productAmount - discountAmount);
+  return payableProductAmount + Math.max(0, shippingFee);
 }

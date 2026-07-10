@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useAuthStore } from '@/stores/authStore';
 import { useProductStore } from '@/stores/productStore';
 import { useCartStore } from '@/stores/cartStore';
 import { apiGetProduct, apiGetPublicShippingPolicy, type ShippingPolicy } from '@/lib/api';
@@ -14,6 +15,7 @@ function isRenderableImageUrl(url: string) {
 export default function ProductDetailPage() {
   const navigate = useNavigate();
   const { productId } = useParams<{ productId: string }>();
+  const { member } = useAuthStore();
   const { selectedProduct, setSelectedProduct, isLoading, setLoading } = useProductStore();
   const { addItem } = useCartStore();
   const [quantity, setQuantity] = useState(1);
@@ -47,6 +49,12 @@ export default function ProductDetailPage() {
 
   const handleAddToCart = () => {
     if (!selectedProduct) return;
+    if (!member) {
+      setToast({ message: '로그인 후 장바구니를 이용할 수 있습니다.', type: 'error' });
+      setTimeout(() => navigate('/login'), 1200);
+      return;
+    }
+
     addItem({
       product_id: selectedProduct.id,
       product_name: selectedProduct.name,
@@ -62,6 +70,12 @@ export default function ProductDetailPage() {
 
   const handleBuyNow = () => {
     if (!selectedProduct) return;
+    if (!member) {
+      setToast({ message: '로그인 후 구매할 수 있습니다.', type: 'error' });
+      setTimeout(() => navigate('/login'), 1200);
+      return;
+    }
+
     sessionStorage.setItem(
       'checkout-direct-items',
       JSON.stringify([
