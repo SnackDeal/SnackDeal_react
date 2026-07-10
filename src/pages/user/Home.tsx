@@ -3,7 +3,12 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Package, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { apiGetEventCouponBoards, apiGetProducts, type EventCouponBoard } from '@/lib/api';
+import {
+  apiGetEventCouponBoards,
+  apiGetProduct,
+  apiGetProducts,
+  type EventCouponBoard,
+} from '@/lib/api';
 import type { Product } from '@/lib/mockProducts';
 
 const TOP_LIMIT = 8;
@@ -16,14 +21,26 @@ function isRenderableImageUrl(url: string) {
 
 export function Home() {
   const [topProducts, setTopProducts] = useState<Product[]>([]);
-  const [categorySections, setCategorySections] = useState<Array<{ id: number; name: string; products: Product[] }>>([]);
+  const [categorySections, setCategorySections] = useState<
+    Array<{ id: number; name: string; products: Product[] }>
+  >([]);
   const [eventBoards, setEventBoards] = useState<EventCouponBoard[]>([]);
   const [refreshToken, setRefreshToken] = useState(0);
 
   useEffect(() => {
     apiGetProducts({ sort: 'latest', page: 1, size: 50 })
-      .then((result) => {
-        const activeProducts = result.items.filter((product) => product.status === 'ACTIVE');
+      .then(async (result) => {
+        const hydratedProducts = await Promise.all(
+          result.items.map(async (product) => {
+            try {
+              return await apiGetProduct(product.id);
+            } catch {
+              return product;
+            }
+          })
+        );
+
+        const activeProducts = hydratedProducts.filter((product) => product.status === 'ACTIVE');
         const grouped = new Map<number, { id: number; name: string; products: Product[] }>();
 
         activeProducts.forEach((product) => {
@@ -84,7 +101,7 @@ export function Home() {
       <HeroBanner />
 
       <Section
-        title="새로 들어온 스낵"
+        title="새로 들어온 상품"
         subtitle="최근 등록된 상품을 먼저 보여드려요"
         moreTo="/products"
       >
@@ -110,17 +127,15 @@ export function Home() {
   );
 }
 
-/* --- Sub-sections ------------------------------------------------------- */
-
 function HeroBanner() {
   return (
     <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-50 via-white to-brand-100 px-8 py-14 md:px-14 md:py-20">
       <div className="relative z-10 flex max-w-2xl flex-col gap-4">
         <Badge tone="brand" className="w-fit">
-          오늘의 딜
+          오늘의 추천
         </Badge>
         <h1 className="text-3xl font-bold leading-tight text-ink-900 md:text-4xl">
-          오늘의 딜, 지금 담아요
+          오늘의 간식을 지금 바로 만나보세요
         </h1>
         <p className="text-base text-ink-600 md:text-lg">
           매일 새로 올라오는 과자를 부담 없는 가격에 만나보세요.
@@ -203,20 +218,16 @@ function ProductCard({ product }: { product: Product }) {
     >
       <div className="relative aspect-square bg-ink-100">
         {imageUrl ? (
-          <img
-            src={imageUrl}
-            alt={product.name}
-            className="h-full w-full object-cover"
-          />
+          <img src={imageUrl} alt={product.name} className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-ink-400">
             <Package size={36} strokeWidth={1.5} />
           </div>
         )}
-        <div className="absolute left-2.5 top-2.5 flex flex-wrap gap-1">
+        <div className="absolute right-2.5 top-2.5 flex flex-wrap gap-1">
           {isLowStock && (
             <span className="rounded-full bg-red-500 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm">
-              임박 {product.stock}개
+              임박상품
             </span>
           )}
         </div>
@@ -247,10 +258,8 @@ function EventBanner({ boards }: { boards: EventCouponBoard[] }) {
     <section className="flex flex-col gap-5">
       <div className="flex items-end justify-between">
         <div>
-          <h2 className="text-xl font-bold text-ink-900 md:text-2xl">
-            진행 중인 이벤트
-          </h2>
-          <p className="text-sm text-ink-500">쿠폰 받고 더 알뜰하게 구매하세요</p>
+          <h2 className="text-xl font-bold text-ink-900 md:text-2xl">진행 중인 이벤트</h2>
+          <p className="text-sm text-ink-500">쿠폰 받고 더 알뜰하게 구매해보세요.</p>
         </div>
         <Link
           to="/event"
@@ -292,7 +301,7 @@ function EventBanner({ boards }: { boards: EventCouponBoard[] }) {
 function EmptyCategory() {
   return (
     <div className="flex h-32 items-center justify-center rounded-xl border border-dashed border-ink-200 text-sm text-ink-500">
-      곧 새로운 상품이 준비될 예정이에요.
+      곧 새로운 상품을 준비해둘 예정이에요.
     </div>
   );
 }
