@@ -6,10 +6,13 @@ import { useDeliveryStore } from '@/stores/deliveryStore';
 import {
   apiCompleteOrder,
   apiGetMyCoupons,
+  apiGetPublicShippingPolicy,
   apiPrepareOrder,
   type MyCoupon,
   type OrderPrepareResponse,
+  type ShippingPolicy,
 } from '@/lib/api';
+import { getShippingFeeForAmount } from '@/lib/shipping';
 import { Button } from '@/components/ui/Button';
 import { Toast } from '@/components/ui/Toast';
 import type { CartItem } from '@/stores/cartStore';
@@ -49,6 +52,8 @@ export default function CheckoutPage() {
   const [myCoupons, setMyCoupons] = useState<MyCoupon[]>([]);
   const [isCouponsLoading, setIsCouponsLoading] = useState(true);
   const [selectedCouponId, setSelectedCouponId] = useState<number | null>(null);
+  const [shippingPolicy, setShippingPolicy] = useState<ShippingPolicy | null>(null);
+  const [isShippingPolicyLoading, setIsShippingPolicyLoading] = useState(true);
   const checkoutProductIds = useMemo(() => {
     try {
       const raw = sessionStorage.getItem('checkout-product-ids');
@@ -119,6 +124,29 @@ export default function CheckoutPage() {
     };
   }, [accessToken]);
 
+  useEffect(() => {
+    let ignore = false;
+    setIsShippingPolicyLoading(true);
+
+    apiGetPublicShippingPolicy()
+      .then((policy) => {
+        if (ignore) return;
+        setShippingPolicy(policy);
+      })
+      .catch(() => {
+        if (ignore) return;
+        setShippingPolicy(null);
+      })
+      .finally(() => {
+        if (ignore) return;
+        setIsShippingPolicyLoading(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
   if (!member || checkoutItems.length === 0) {
     return (
       <>
@@ -136,7 +164,7 @@ export default function CheckoutPage() {
   }
 
   const productAmount = checkoutItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const shippingFee = 0;
+  const shippingFee = getShippingFeeForAmount(shippingPolicy, productAmount);
   const selectedCoupon = myCoupons.find((c) => c.userCouponId === selectedCouponId) ?? null;
   const now = new Date();
   const isCouponUsable = (c: MyCoupon) =>
@@ -465,7 +493,7 @@ export default function CheckoutPage() {
                   }}
                 >
                   <span>배송료</span>
-                  <span>₩{shippingFee.toLocaleString()}</span>
+                  <span>{isShippingPolicyLoading ? '계산 중...' : `₩${shippingFee.toLocaleString()}`}</span>
                 </div>
                 {discountAmount > 0 && (
                   <div

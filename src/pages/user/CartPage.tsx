@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useCartStore } from '@/stores/cartStore';
+import { apiGetPublicShippingPolicy, type ShippingPolicy } from '@/lib/api';
+import { getShippingFeeForAmount } from '@/lib/shipping';
 import { Button } from '@/components/ui/Button';
 import { Toast } from '@/components/ui/Toast';
 
@@ -11,6 +13,7 @@ export default function CartPage() {
   const { items, updateQuantity, removeItem, removeItems, clearCart } = useCartStore();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [shippingPolicy, setShippingPolicy] = useState<ShippingPolicy | null>(null);
 
   useEffect(() => {
     if (!member) {
@@ -18,6 +21,24 @@ export default function CartPage() {
       setTimeout(() => navigate('/login'), 2000);
     }
   }, [member, navigate]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    apiGetPublicShippingPolicy()
+      .then((policy) => {
+        if (ignore) return;
+        setShippingPolicy(policy);
+      })
+      .catch(() => {
+        if (ignore) return;
+        setShippingPolicy(null);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   if (!member) {
     return (
@@ -89,7 +110,8 @@ export default function CartPage() {
   const selectedItems = items.filter((item) => selectedIds.includes(item.product_id));
   const selectedTotalPrice = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const totalPrice = selectedTotalPrice;
-  const estimatedTotalPrice = totalPrice > 0 ? totalPrice + 3000 : 0;
+  const shippingFee = getShippingFeeForAmount(shippingPolicy, totalPrice);
+  const estimatedTotalPrice = totalPrice > 0 ? totalPrice + shippingFee : 0;
 
   return (
     <>
@@ -237,7 +259,7 @@ export default function CartPage() {
               </div>
               <div className="mb-3 flex justify-between text-sm text-gray-600">
                 <span>배송료</span>
-                <span>₩3,000</span>
+                <span>₩{shippingFee.toLocaleString()}</span>
               </div>
               <div className="mb-5 flex justify-between border-t border-gray-200 pt-3 font-bold">
                 <span>예상 결제금액</span>
@@ -500,7 +522,7 @@ export default function CartPage() {
                   }}
                 >
                   <span>배송료</span>
-                  <span>₩3,000</span>
+                  <span>₩{shippingFee.toLocaleString()}</span>
                 </div>
                 <div
                   style={{
