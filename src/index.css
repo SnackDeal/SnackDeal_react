@@ -16,3 +16,115 @@ body {
   background: #ffffff;
   -webkit-font-smoothing: antialiased;
 }
+
+.admin-content {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.admin-content table {
+  max-width: 100%;
+}
+
+.user-content {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.user-content img {
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  .admin-content > div {
+    max-width: 100% !important;
+    padding: 0 !important;
+  }
+
+  .admin-content h1 {
+    font-size: 24px !important;
+    line-height: 1.25 !important;
+  }
+
+  .admin-content input,
+  .admin-content select,
+  .admin-content textarea,
+  .admin-content button {
+    max-width: 100%;
+  }
+
+  .admin-content div[style*="grid-template-columns: 1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  .admin-content div[style*="overflow: hidden"]:has(> table),
+  .admin-content div[style*="overflow:hidden"]:has(> table) {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .admin-content table {
+    min-width: 680px;
+  }
+
+  .admin-content td,
+  .admin-content th {
+    white-space: nowrap;
+  }
+
+  .user-content > div {
+    max-width: 100% !important;
+    padding: 0 !important;
+  }
+
+  .user-content h1 {
+    font-size: 24px !important;
+    line-height: 1.25 !important;
+  }
+
+  .user-content h2 {
+    font-size: 20px !important;
+    line-height: 1.3 !important;
+  }
+
+  .user-content input,
+  .user-content select,
+  .user-content textarea,
+  .user-content button {
+    max-width: 100%;
+  }
+
+  .user-content div[style*="grid-template-columns: 1fr 1fr"],
+  .user-content div[style*="grid-template-columns: 1fr 300px"],
+  .user-content div[style*="grid-template-columns: 1fr 320px"],
+  .user-content div[style*="grid-template-columns: 200px 1fr"],
+  .user-content div[style*="grid-template-columns: 280px 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  .user-content div[style*="grid-template-columns: 40px 80px 1fr 80px 80px 50px"],
+  .user-content div[style*="grid-template-columns: 60px 1fr 60px 80px"] {
+    min-width: 640px;
+  }
+
+  .user-content div:has(> div[style*="grid-template-columns: 40px 80px 1fr 80px 80px 50px"]),
+  .user-content div:has(> div[style*="grid-template-columns: 60px 1fr 60px 80px"]) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .user-content div[style*="overflow: hidden"]:has(> table),
+  .user-content div[style*="overflow:hidden"]:has(> table) {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .user-content table {
+    min-width: 640px;
+  }
+
+  .user-content form[style*="display: flex"],
+  .user-content div[style*="display: flex"] {
+    flex-wrap: wrap;
+  }
+}

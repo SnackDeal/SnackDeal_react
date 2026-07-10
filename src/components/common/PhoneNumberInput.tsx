@@ -60,7 +60,7 @@ export function PhoneNumberInput({
   }
 
   const inputClassName =
-    'h-10 w-full rounded-lg border border-ink-300 bg-ink-50 px-3 text-center text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:bg-ink-100 disabled:text-ink-400';
+    'h-10 w-full rounded-lg border border-ink-300 bg-white px-3 text-center text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:bg-ink-100 disabled:text-ink-400';
 
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>

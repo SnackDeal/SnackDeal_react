@@ -1,28 +1,108 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Package, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { products, categories } from '@/mocks/products';
-import { useCouponStore, type CouponBoard } from '@/stores/couponStore';
-import type { Product } from '@/types';
+import {
+  apiGetEventCouponBoards,
+  apiGetProduct,
+  apiGetProducts,
+  type EventCouponBoard,
+} from '@/lib/api';
+import type { Product } from '@/lib/mockProducts';
 
 const TOP_LIMIT = 8;
 const PER_CATEGORY = 4;
+const PRODUCT_UPDATED_EVENT = 'snackdeal-products-updated';
+
+function isRenderableImageUrl(url: string) {
+  return /^https?:\/\//.test(url);
+}
 
 export function Home() {
-  const activeProducts = products.filter((p) => p.status === 'ACTIVE');
-  const topProducts = activeProducts.slice(0, TOP_LIMIT);
-  const eventBoards = useCouponStore((s) => s.getCouponBoards()).filter(
-    (b) => b.is_active
-  );
+  const [topProducts, setTopProducts] = useState<Product[]>([]);
+  const [categorySections, setCategorySections] = useState<
+    Array<{ id: number; name: string; products: Product[] }>
+  >([]);
+  const [eventBoards, setEventBoards] = useState<EventCouponBoard[]>([]);
+  const [refreshToken, setRefreshToken] = useState(0);
+
+  useEffect(() => {
+    apiGetProducts({ sort: 'latest', page: 1, size: 50 })
+      .then(async (result) => {
+        const hydratedProducts = await Promise.all(
+          result.items.map(async (product) => {
+            try {
+              return await apiGetProduct(product.id);
+            } catch {
+              return product;
+            }
+          })
+        );
+
+        const activeProducts = hydratedProducts.filter((product) => product.status === 'ACTIVE');
+        const grouped = new Map<number, { id: number; name: string; products: Product[] }>();
+
+        activeProducts.forEach((product) => {
+          const section = grouped.get(product.category_id) ?? {
+            id: product.category_id,
+            name: product.category,
+            products: [],
+          };
+          section.products.push(product);
+          grouped.set(product.category_id, section);
+        });
+
+        setTopProducts(activeProducts.slice(0, TOP_LIMIT));
+        setCategorySections(
+          Array.from(grouped.values()).map((section) => ({
+            ...section,
+            products: section.products.slice(0, PER_CATEGORY),
+          }))
+        );
+      })
+      .catch(() => {
+        setTopProducts([]);
+        setCategorySections([]);
+      });
+  }, [refreshToken]);
+
+  useEffect(() => {
+    apiGetEventCouponBoards()
+      .then((rows) => {
+        const now = new Date();
+        const active = rows.filter((board) => {
+          const start = new Date(board.startAt);
+          const end = board.endAt ? new Date(board.endAt) : null;
+          return start <= now && (end === null || now <= end);
+        });
+        setEventBoards(active);
+      })
+      .catch(() => setEventBoards([]));
+  }, []);
+
+  useEffect(() => {
+    const refresh = () => setRefreshToken((value) => value + 1);
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === PRODUCT_UPDATED_EVENT) refresh();
+    };
+
+    window.addEventListener(PRODUCT_UPDATED_EVENT, refresh);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener(PRODUCT_UPDATED_EVENT, refresh);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
 
   return (
     <div className="flex flex-col gap-14">
       <HeroBanner />
 
       <Section
-        title="지금 인기 있는 스낵"
-        subtitle="오늘 잘 나가는 상품만 골라봤어요"
+        title="새로 들어온 상품"
+        subtitle="최근 등록된 상품을 먼저 보여드려요"
         moreTo="/products"
       >
         <ProductGrid products={topProducts} />
@@ -30,40 +110,32 @@ export function Home() {
 
       {eventBoards.length > 0 && <EventBanner boards={eventBoards} />}
 
-      {categories.map((category) => {
-        const items = activeProducts
-          .filter((p) => p.category_id === category.id)
-          .slice(0, PER_CATEGORY);
-
-        return (
-          <Section
-            key={category.id}
-            title={category.name}
-            moreTo={`/products?category_id=${category.id}`}
-          >
-            {items.length > 0 ? (
-              <ProductGrid products={items} />
-            ) : (
-              <EmptyCategory />
-            )}
-          </Section>
-        );
-      })}
+      {categorySections.map((category) => (
+        <Section
+          key={category.id}
+          title={category.name}
+          moreTo={`/products?categoryId=${category.id}`}
+        >
+          {category.products.length > 0 ? (
+            <ProductGrid products={category.products} />
+          ) : (
+            <EmptyCategory />
+          )}
+        </Section>
+      ))}
     </div>
   );
 }
-
-/* --- Sub-sections ------------------------------------------------------- */
 
 function HeroBanner() {
   return (
     <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-50 via-white to-brand-100 px-8 py-14 md:px-14 md:py-20">
       <div className="relative z-10 flex max-w-2xl flex-col gap-4">
         <Badge tone="brand" className="w-fit">
-          오늘의 딜
+          오늘의 추천
         </Badge>
         <h1 className="text-3xl font-bold leading-tight text-ink-900 md:text-4xl">
-          오늘의 딜, 지금 담아요
+          오늘의 간식을 지금 바로 만나보세요
         </h1>
         <p className="text-base text-ink-600 md:text-lg">
           매일 새로 올라오는 과자를 부담 없는 가격에 만나보세요.
@@ -135,8 +207,9 @@ function ProductGrid({ products }: { products: Product[] }) {
 }
 
 function ProductCard({ product }: { product: Product }) {
-  const isSoldOut = product.stock === 0;
-  const category = categories.find((c) => c.id === product.category_id);
+  const isSoldOut = product.stock === 0 || product.is_soldout;
+  const isLowStock = !isSoldOut && product.stock > 0 && product.stock < 10;
+  const imageUrl = isRenderableImageUrl(product.image_url) ? product.image_url : '';
 
   return (
     <Link
@@ -144,29 +217,30 @@ function ProductCard({ product }: { product: Product }) {
       className="group flex flex-col overflow-hidden rounded-xl border border-black/[0.06] bg-white shadow-s1 transition-all hover:shadow-s2 active:scale-[0.99]"
     >
       <div className="relative aspect-square bg-ink-100">
-        {product.image_url ? (
-          <img
-            src={product.image_url}
-            alt={product.name}
-            className="h-full w-full object-cover"
-          />
+        {imageUrl ? (
+          <img src={imageUrl} alt={product.name} className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-ink-400">
             <Package size={36} strokeWidth={1.5} />
           </div>
         )}
+        <div className="absolute right-2.5 top-2.5 flex flex-wrap gap-1">
+          {isLowStock && (
+            <span className="rounded-full bg-red-500 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm">
+              임박상품
+            </span>
+          )}
+        </div>
         {isSoldOut && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-            <Badge tone="gray" className="bg-white/95 text-ink-900">
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-[1px]">
+            <span className="rounded-full bg-white/95 px-4 py-1.5 text-sm font-bold text-ink-900 shadow-md">
               품절
-            </Badge>
+            </span>
           </div>
         )}
       </div>
       <div className="flex flex-1 flex-col gap-1.5 p-3">
-        {category && (
-          <span className="text-xs text-ink-500">{category.name}</span>
-        )}
+        <span className="text-xs text-ink-500">{product.category}</span>
         <p className="line-clamp-1 text-sm font-medium text-ink-900 group-hover:text-brand-700">
           {product.name}
         </p>
@@ -179,15 +253,13 @@ function ProductCard({ product }: { product: Product }) {
   );
 }
 
-function EventBanner({ boards }: { boards: CouponBoard[] }) {
+function EventBanner({ boards }: { boards: EventCouponBoard[] }) {
   return (
     <section className="flex flex-col gap-5">
       <div className="flex items-end justify-between">
         <div>
-          <h2 className="text-xl font-bold text-ink-900 md:text-2xl">
-            진행 중인 이벤트
-          </h2>
-          <p className="text-sm text-ink-500">쿠폰 받고 더 알뜰하게 구매하세요</p>
+          <h2 className="text-xl font-bold text-ink-900 md:text-2xl">진행 중인 이벤트</h2>
+          <p className="text-sm text-ink-500">쿠폰 받고 더 알뜰하게 구매해보세요.</p>
         </div>
         <Link
           to="/event"
@@ -212,7 +284,7 @@ function EventBanner({ boards }: { boards: CouponBoard[] }) {
               <h3 className="text-lg font-bold leading-tight">{board.title}</h3>
               <p className="line-clamp-2 text-sm text-white/85">{board.content}</p>
               <span className="mt-auto pt-3 text-xs text-white/70">
-                {formatPeriod(board.start_at, board.end_at)}
+                {formatPeriod(board.startAt, board.endAt)}
               </span>
             </div>
             <div
@@ -229,17 +301,16 @@ function EventBanner({ boards }: { boards: CouponBoard[] }) {
 function EmptyCategory() {
   return (
     <div className="flex h-32 items-center justify-center rounded-xl border border-dashed border-ink-200 text-sm text-ink-500">
-      곧 새로운 상품이 준비될 예정이에요.
+      곧 새로운 상품을 준비해둘 예정이에요.
     </div>
   );
 }
 
-function formatPeriod(from: string, to: string) {
+function formatPeriod(from: string, to: string | null) {
   const f = new Date(from);
-  const t = new Date(to);
   const fmt = (d: Date) =>
     `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(
       d.getDate()
     ).padStart(2, '0')}`;
-  return `${fmt(f)} ~ ${fmt(t)}`;
+  return `${fmt(f)} ~ ${to ? fmt(new Date(to)) : '상시'}`;
 }

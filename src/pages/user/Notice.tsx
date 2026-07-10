@@ -1,88 +1,239 @@
-import { useState } from 'react';
-import { useCSStore } from '@/stores/csStore';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { AlertCircle, Clock3, RefreshCw } from 'lucide-react';
+import { AdminPagination, type AdminPageSize } from '@/components/admin/Pagination';
+import { CustomerSupportHero } from '@/components/common/CustomerSupportHero';
+import { apiGetPublicNotices, type NoticeSummary } from '@/lib/api';
+
+function formatLocalDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(
+    date.getHours()
+  )}:${pad(date.getMinutes())}`;
+}
 
 export default function NoticeListPage() {
-  const { getNotices } = useCSStore();
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const notices = getNotices();
-  const selected = notices.find((n) => n.id === selectedId);
+  const navigate = useNavigate();
+  const [notices, setNotices] = useState<NoticeSummary[]>([]);
+  const [listLoading, setListLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState<AdminPageSize>(10);
+
+  useEffect(() => {
+    let alive = true;
+    setListLoading(true);
+    setError('');
+
+    apiGetPublicNotices()
+      .then((items) => {
+        if (!alive) return;
+        setNotices(items);
+      })
+      .catch((e: { message?: string }) => {
+        if (!alive) return;
+        setError(e.message ?? '공지 목록을 불러오지 못했습니다.');
+      })
+      .finally(() => {
+        if (alive) setListLoading(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const orderedNotices = useMemo(
+    () =>
+      [...notices].sort((a, b) => {
+        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      }),
+    [notices]
+  );
+  const totalPages = Math.max(Math.ceil(orderedNotices.length / pageSize), 1);
+  const clampedPage = Math.min(page, totalPages - 1);
+  const pageItems = orderedNotices.slice(clampedPage * pageSize, clampedPage * pageSize + pageSize);
+
+  useEffect(() => {
+    setPage(0);
+  }, [pageSize]);
+
+  const refresh = async () => {
+    setListLoading(true);
+    setError('');
+    try {
+      const items = await apiGetPublicNotices();
+      setNotices(items);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : '공지 목록을 불러오지 못했습니다.';
+      setError(message);
+    } finally {
+      setListLoading(false);
+    }
+  };
 
   return (
-    <>
-      <div style={{ padding: '24px', maxWidth: '900px', margin: '0 auto' }}>
-        <h1 style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '32px' }}>공지사항</h1>
+    <div style={{ maxWidth: 1120, margin: '0 auto', padding: '24px 16px 48px' }}>
+      <CustomerSupportHero
+        section="notice"
+        description="공지 목록에서 항목을 선택하면 상세 페이지로 이동합니다."
+        title="공지사항"
+      />
 
-        {selected ? (
+      {error && (
+        <div
+          style={{
+            marginBottom: 16,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            borderRadius: 14,
+            border: '1px solid #fecaca',
+            background: '#fff1f2',
+            padding: '14px 16px',
+            color: '#be123c',
+          }}
+        >
+          <AlertCircle size={18} />
+          <span style={{ flex: 1 }}>{error}</span>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              border: 'none',
+              borderRadius: 10,
+              background: '#be123c',
+              color: '#fff',
+              padding: '8px 12px',
+              cursor: 'pointer',
+              fontWeight: 700,
+            }}
+          >
+            <RefreshCw size={14} />
+            다시 시도
+          </button>
+        </div>
+      )}
+
+      <section style={{ borderRadius: 20, border: '1px solid #e5e7eb', background: '#fff', overflow: 'hidden' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '18px 20px',
+            borderBottom: '1px solid #eef2f7',
+          }}
+        >
           <div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>공지 목록</div>
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>최신 공지가 위에 표시됩니다.</div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ fontSize: 12, color: '#64748b' }}>{orderedNotices.length}건</div>
             <button
-              onClick={() => setSelectedId(null)}
+              type="button"
+              onClick={() => void refresh()}
               style={{
-                marginBottom: '24px',
-                padding: '8px 12px',
-                border: '1px solid #ccc',
-                borderRadius: '4px',
-                background: 'white',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                borderRadius: 12,
+                border: '1px solid #dbe3ee',
+                background: '#fff',
+                padding: '10px 12px',
                 cursor: 'pointer',
-                fontSize: '12px',
+                fontSize: 13,
+                fontWeight: 700,
+                color: '#0f172a',
               }}
             >
-              ← 목록으로
+              <RefreshCw size={14} />
+              새로고침
             </button>
-
-            <div style={{ border: '1px solid #eee', borderRadius: '4px', padding: '32px' }}>
-              <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '16px' }}>
-                {selected.title}
-              </h2>
-              <div style={{ fontSize: '12px', color: '#999', marginBottom: '24px' }}>
-                {new Date(selected.created_at).toLocaleDateString()}
-              </div>
-              <div style={{ lineHeight: '1.8', color: '#333', whiteSpace: 'pre-wrap' }}>
-                {selected.content}
-              </div>
-            </div>
           </div>
-        ) : (
-          <div>
-            {notices.map((notice) => (
-              <div
+        </div>
+
+        <div style={{ maxHeight: 720, overflowY: 'auto' }}>
+          {listLoading ? (
+            <div style={{ padding: 24, color: '#64748b' }}>공지 목록을 불러오는 중...</div>
+          ) : orderedNotices.length === 0 ? (
+            <div style={{ padding: 24, color: '#64748b' }}>등록된 공지가 없습니다.</div>
+          ) : (
+            pageItems.map((notice) => (
+              <button
                 key={notice.id}
-                onClick={() => setSelectedId(notice.id)}
+                type="button"
+                onClick={() => navigate(`/cs/notice/${notice.id}`)}
                 style={{
-                  padding: '16px',
-                  borderBottom: '1px solid #eee',
-                  cursor: 'pointer',
+                  width: '100%',
                   display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
+                  gap: 12,
+                  border: 'none',
+                  borderTop: '1px solid #eef2f7',
+                  background: '#fff',
+                  padding: '16px 20px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
                 }}
               >
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '4px' }}>
-                    {notice.is_pinned && (
-                      <span
-                        style={{
-                          padding: '2px 8px',
-                          fontSize: '10px',
-                          background: '#333',
-                          color: 'white',
-                          borderRadius: '2px',
-                          fontWeight: 'bold',
-                        }}
-                      >
-                        공지
-                      </span>
-                    )}
-                    <h3 style={{ fontWeight: '600', fontSize: '16px' }}>{notice.title}</h3>
+                <div
+                  style={{
+                    marginTop: 2,
+                    flex: '0 0 auto',
+                    borderRadius: 999,
+                    background: notice.pinned ? '#0f172a' : '#e2e8f0',
+                    color: notice.pinned ? '#fff' : '#475569',
+                    padding: '4px 8px',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    height: 'fit-content',
+                  }}
+                >
+                  {notice.pinned ? '고정' : '일반'}
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      fontSize: 15,
+                      fontWeight: 700,
+                      color: '#0f172a',
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {notice.title}
+                    </span>
                   </div>
-                  <div style={{ fontSize: '12px', color: '#666' }}>
-                    {new Date(notice.created_at).toLocaleDateString()}
+                  <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, color: '#64748b', fontSize: 12 }}>
+                    <Clock3 size={13} />
+                    {formatLocalDateTime(notice.createdAt)}
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </>
+              </button>
+            ))
+          )}
+        </div>
+      </section>
+
+      <AdminPagination
+        page={clampedPage}
+        totalPages={totalPages}
+        total={orderedNotices.length}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+        unitLabel="건"
+      />
+    </div>
   );
 }

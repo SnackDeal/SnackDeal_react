@@ -2,15 +2,18 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useCartStore } from '@/stores/cartStore';
+import { apiGetPublicShippingPolicy, type ShippingPolicy } from '@/lib/api';
+import { getShippingFeeForAmount } from '@/lib/shipping';
 import { Button } from '@/components/ui/Button';
 import { Toast } from '@/components/ui/Toast';
 
 export default function CartPage() {
   const navigate = useNavigate();
   const { member } = useAuthStore();
-  const { items, updateQuantity, removeItem, removeItems, clearCart, getTotalPrice } = useCartStore();
+  const { items, updateQuantity, removeItem, removeItems, clearCart } = useCartStore();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [shippingPolicy, setShippingPolicy] = useState<ShippingPolicy | null>(null);
 
   useEffect(() => {
     if (!member) {
@@ -18,6 +21,24 @@ export default function CartPage() {
       setTimeout(() => navigate('/login'), 2000);
     }
   }, [member, navigate]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    apiGetPublicShippingPolicy()
+      .then((policy) => {
+        if (ignore) return;
+        setShippingPolicy(policy);
+      })
+      .catch(() => {
+        if (ignore) return;
+        setShippingPolicy(null);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   if (!member) {
     return (
@@ -66,19 +87,31 @@ export default function CartPage() {
       setToast({ message: '장바구니가 비어있습니다.', type: 'error' });
       return;
     }
-    // 품절 상품 확인
-    const soldoutItems = items.filter((item) => item.is_soldout);
-    if (soldoutItems.length > 0) {
+    if (selectedIds.length === 0) {
+      setToast({ message: '주문할 상품을 선택해주세요.', type: 'error' });
+      return;
+    }
+
+    const selectedItemsForCheckout = items.filter((item) => selectedIds.includes(item.product_id));
+    const selectedSoldoutItems = selectedItemsForCheckout.filter((item) => item.is_soldout);
+    if (selectedSoldoutItems.length > 0) {
       setToast({
-        message: `${soldoutItems.map((i) => i.product_name).join(', ')}이(가) 품절되었습니다.`,
+        message: `${selectedSoldoutItems.map((i) => i.product_name).join(', ')} 상품이 품절되었습니다.`,
         type: 'error',
       });
       return;
     }
+
+    sessionStorage.setItem('checkout-product-ids', JSON.stringify(selectedIds));
+    sessionStorage.removeItem('checkout-direct-items');
     navigate('/checkout');
   };
 
-  const totalPrice = getTotalPrice();
+  const selectedItems = items.filter((item) => selectedIds.includes(item.product_id));
+  const selectedTotalPrice = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const totalPrice = selectedTotalPrice;
+  const shippingFee = getShippingFeeForAmount(shippingPolicy, totalPrice);
+  const estimatedTotalPrice = totalPrice > 0 ? totalPrice + shippingFee : 0;
 
   return (
     <>
@@ -111,6 +144,137 @@ export default function CartPage() {
             </Button>
           </div>
         ) : (
+          <>
+          <div className="grid gap-4 sm:hidden">
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+              <input
+                type="checkbox"
+                checked={selectedIds.length === items.length && items.length > 0}
+                onChange={handleSelectAll}
+              />
+              전체 선택
+            </label>
+
+            {items.map((item) => (
+              <div key={item.product_id} className="rounded-lg border border-gray-200 bg-white p-4">
+                <div className="mb-4 flex gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(item.product_id)}
+                    onChange={() => handleSelectItem(item.product_id)}
+                    className="mt-1"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/products/${item.product_id}`)}
+                    className="h-20 w-20 shrink-0 overflow-hidden rounded bg-gray-100"
+                  >
+                    <img
+                      src={item.product_image}
+                      alt={item.product_name}
+                      className="h-full w-full object-cover"
+                    />
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/products/${item.product_id}`)}
+                      className="block max-w-full truncate text-left text-sm font-bold text-gray-900"
+                    >
+                      {item.product_name}
+                    </button>
+                    <div className="mt-1 text-sm text-gray-600">₩{item.price.toLocaleString()}</div>
+                    {item.is_soldout ? (
+                      <div className="mt-1 text-xs font-bold text-red-500">품절</div>
+                    ) : item.max_stock < 10 ? (
+                      <div className="mt-1 text-xs text-red-500">{item.max_stock}개 남음</div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 border-t border-gray-100 pt-3">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => updateQuantity(item.product_id, Math.max(1, item.quantity - 1))}
+                      disabled={item.is_soldout}
+                      className="h-8 w-8 rounded border border-gray-300 text-sm disabled:opacity-50"
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      min="1"
+                      max={item.max_stock}
+                      value={item.quantity}
+                      onChange={(e) => {
+                        let val = Number(e.target.value);
+                        val = Math.max(1, Math.min(val, item.max_stock));
+                        updateQuantity(item.product_id, val);
+                      }}
+                      disabled={item.is_soldout}
+                      className="h-8 w-12 rounded border border-gray-300 text-center text-sm"
+                    />
+                    <button
+                      onClick={() => updateQuantity(item.product_id, Math.min(item.max_stock, item.quantity + 1))}
+                      disabled={item.is_soldout || item.quantity === item.max_stock}
+                      className="h-8 w-8 rounded border border-gray-300 text-sm disabled:opacity-50"
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  <div className="text-right">
+                    <div className="text-sm font-bold text-gray-900">
+                      ₩{(item.price * item.quantity).toLocaleString()}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        removeItem(item.product_id);
+                        setSelectedIds((prev) => prev.filter((id) => id !== item.product_id));
+                      }}
+                      className="mt-1 text-xs font-semibold text-red-500"
+                    >
+                      삭제
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            <div className="grid grid-cols-2 gap-2 border-t border-gray-200 pt-4">
+              <Button onClick={handleRemoveSelected} variant="secondary">
+                선택 삭제
+              </Button>
+              <Button onClick={handleClearAll} variant="secondary">
+                전체 삭제
+              </Button>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-white p-5">
+              <h3 className="mb-5 text-base font-bold">주문 요약</h3>
+              <div className="mb-3 flex justify-between text-sm text-gray-600">
+                <span>상품금액</span>
+                <span>₩{totalPrice.toLocaleString()}</span>
+              </div>
+              <div className="mb-3 flex justify-between text-sm text-gray-600">
+                <span>배송료</span>
+                <span>₩{shippingFee.toLocaleString()}</span>
+              </div>
+              <div className="mb-5 flex justify-between border-t border-gray-200 pt-3 font-bold">
+                <span>예상 결제금액</span>
+                <span>₩{estimatedTotalPrice.toLocaleString()}</span>
+              </div>
+              <Button onClick={handleCheckout} style={{ width: '100%', marginBottom: '8px' }}>
+                주문하기
+              </Button>
+              <Button onClick={() => navigate('/products')} variant="secondary" style={{ width: '100%' }}>
+                계속 쇼핑
+              </Button>
+            </div>
+          </div>
+
+          <div className="hidden sm:block">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '24px' }}>
             {/* Items */}
             <div>
@@ -358,7 +522,7 @@ export default function CartPage() {
                   }}
                 >
                   <span>배송료</span>
-                  <span>₩3,000</span>
+                  <span>₩{shippingFee.toLocaleString()}</span>
                 </div>
                 <div
                   style={{
@@ -371,7 +535,7 @@ export default function CartPage() {
                   }}
                 >
                   <span>예상 결제금액</span>
-                  <span>₩{(totalPrice + 3000).toLocaleString()}</span>
+                  <span>₩{estimatedTotalPrice.toLocaleString()}</span>
                 </div>
               </div>
 
@@ -390,6 +554,8 @@ export default function CartPage() {
               </Button>
             </div>
           </div>
+          </div>
+          </>
         )}
       </div>
     </>

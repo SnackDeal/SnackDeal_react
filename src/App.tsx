@@ -15,12 +15,15 @@ import CheckoutPage from '@/pages/user/CheckoutPage';
 import MyPage from '@/pages/user/MyPage';
 import { OrderList } from '@/pages/user/OrderList';
 import { OrderDetail } from '@/pages/user/OrderDetail';
+import OrderCompletePage from '@/pages/user/OrderCompletePage';
 import CouponBoxPage from '@/pages/user/CouponBox';
 import DeliveryBookPage from '@/pages/user/DeliveryBookPage';
 import EventList from '@/pages/user/EventList';
 import { EventDetail } from '@/pages/user/EventDetail';
 import NoticeListPage from '@/pages/user/Notice';
+import NoticeDetailPage from '@/pages/user/NoticeDetailPage';
 import QnaListPage from '@/pages/user/QnaList';
+import QnaDetailPage from '@/pages/user/QnaDetailPage';
 import { QnaNew } from '@/pages/user/QnaNew';
 
 // 관리자 페이지
@@ -36,7 +39,12 @@ import AdminCouponsPage from '@/pages/admin/AdminCoupons';
 import { AdminCouponBoards } from '@/pages/admin/AdminCouponBoards';
 import AdminMembersPage from '@/pages/admin/AdminMembers';
 import { AdminMemberDetail } from '@/pages/admin/AdminMemberDetail';
-import AdminQnaPage from '@/pages/admin/AdminQna';
+import AdminNoticeListPage from '@/pages/admin/AdminNoticeList';
+import AdminNoticeDetailPage from '@/pages/admin/AdminNoticeDetailPage';
+import AdminNoticeFormPage from '@/pages/admin/AdminNoticeFormPage';
+import AdminQnaListPage from '@/pages/admin/AdminQnaList';
+import AdminQnaDetailPage from '@/pages/admin/AdminQnaDetailPage';
+import AdminFaqPage from '@/pages/admin/AdminFaq';
 
 import { NotFound } from '@/pages/NotFound';
 
@@ -54,10 +62,12 @@ export default function App() {
         {/* 사용자 */}
         <Route element={<UserLayout />}>
           <Route path="/" element={<Home />} />
+          <Route path="/product" element={<ProductListPage />} />
           <Route path="/products" element={<ProductListPage />} />
           <Route path="/products/:productId" element={<ProductDetailPage />} />
           <Route path="/cart" element={<CartPage />} />
           <Route path="/checkout" element={<CheckoutPage />} />
+          <Route path="/order/complete" element={<OrderCompletePage />} />
           <Route path="/mypage" element={<MyPage />} />
           <Route path="/mypage/orders" element={<OrderList />} />
           <Route path="/mypage/orders/:id" element={<OrderDetail />} />
@@ -66,7 +76,9 @@ export default function App() {
           <Route path="/event" element={<EventList />} />
           <Route path="/event/:id" element={<EventDetail />} />
           <Route path="/cs/notice" element={<NoticeListPage />} />
+          <Route path="/cs/notice/:id" element={<NoticeDetailPage />} />
           <Route path="/cs/qna" element={<QnaListPage />} />
+          <Route path="/cs/qna/:id" element={<QnaDetailPage />} />
           <Route path="/cs/qna/new" element={<QnaNew />} />
         </Route>
 
@@ -80,10 +92,18 @@ export default function App() {
           <Route path="/admin/orders" element={<AdminOrdersPage />} />
           <Route path="/admin/orders/:id" element={<AdminOrderDetail />} />
           <Route path="/admin/coupons" element={<AdminCouponsPage />} />
+          <Route path="/admin/coupons/boards" element={<AdminCouponBoards />} />
           <Route path="/admin/coupon-boards" element={<AdminCouponBoards />} />
           <Route path="/admin/members" element={<AdminMembersPage />} />
           <Route path="/admin/members/:id" element={<AdminMemberDetail />} />
-          <Route path="/admin/qna" element={<AdminQnaPage />} />
+          <Route path="/admin/cs/notices" element={<AdminNoticeListPage />} />
+          <Route path="/admin/cs/notices/new" element={<AdminNoticeFormPage />} />
+          <Route path="/admin/cs/notices/:id" element={<AdminNoticeDetailPage />} />
+          <Route path="/admin/cs/notices/:id/edit" element={<AdminNoticeFormPage />} />
+          <Route path="/admin/cs/faq" element={<AdminFaqPage />} />
+          <Route path="/admin/cs/qna" element={<AdminQnaListPage />} />
+          <Route path="/admin/cs/qna/:id" element={<AdminQnaDetailPage />} />
+          <Route path="/admin/qna" element={<AdminQnaListPage />} />
         </Route>
 
         <Route path="*" element={<NotFound />} />

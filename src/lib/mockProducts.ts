@@ -10,7 +10,7 @@ export interface Product {
   description: string;
   stock: number;
   is_soldout: boolean;
-  status: 'ACTIVE' | 'INACTIVE' | 'DISCONTINUED';
+  status: 'ACTIVE' | 'INACTIVE' | 'DELETED';
 }
 
 const PRODUCTS: Product[] = [
@@ -123,7 +123,7 @@ const PRODUCTS: Product[] = [
 export const mockProductApi = {
   listProducts: async (params: {
     category_id?: number;
-    sort?: 'latest' | 'price_asc' | 'price_desc' | 'popular';
+    sort?: 'latest' | 'price_asc' | 'price_desc';
     keyword?: string;
     page?: number;
     size?: number;
@@ -148,8 +148,6 @@ export const mockProductApi = {
       results.sort((a, b) => a.price - b.price);
     } else if (sort === 'price_desc') {
       results.sort((a, b) => b.price - a.price);
-    } else if (sort === 'popular') {
-      results.sort((a, b) => b.id - a.id); // Mock: higher id = more popular
     } else {
       results.reverse(); // latest
     }

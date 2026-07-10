@@ -48,6 +48,10 @@ export function AdminOrderDetail() {
   const [refundUpdating, setRefundUpdating] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [refundError, setRefundError] = useState('');
+  const normalizedStatus = (order?.status ?? '').toUpperCase();
+  const isCancelled = normalizedStatus === 'CANCELLED';
+  const isRefundRequested = normalizedStatus === 'REFUND_REQUESTED';
+  const isRefundCompleted = normalizedStatus === 'REFUND_COMPLETED';
 
   useEffect(() => {
     if (!adminSession || !id) return;
@@ -73,8 +77,10 @@ export function AdminOrderDetail() {
         if (trackingNumber.trim()) opts.trackingNumber = trackingNumber.trim();
       }
       const res = await apiUpdateOrderStatus(accessToken, order.id, newStatus, opts);
-      setOrder((prev) => prev ? { ...prev, status: res.status, manualOverride: res.manualOverride } : prev);
-      setNewStatus(NEXT_STATUSES[res.status]?.[0] ?? res.status);
+      const fresh = await apiGetAdminOrderDetail(accessToken, order.id);
+      // PATCH 응답의 memo가 GET 응답에 아직 안 담긴 경우 대비하여 병합
+      setOrder({ ...fresh, memo: fresh.memo ?? res.memo ?? memoText ?? null });
+      setNewStatus(NEXT_STATUSES[fresh.status]?.[0] ?? fresh.status);
       const label = STATUS_LABELS[res.status] ?? res.status;
       setStatusSuccess(`${label}(으)로 변경되었습니다.${memoText ? ` 메모: ${memoText}` : ''}`);
       setMemo('');
@@ -93,12 +99,13 @@ export function AdminOrderDetail() {
     setRefundUpdating(true);
     setRefundError('');
     try {
-      const res = await apiAdminRefund(accessToken, order.id, {
+      await apiAdminRefund(accessToken, order.id, {
         approve,
         restoreStock: approve ? true : undefined,
         rejectReason: !approve ? rejectReason : undefined,
       });
-      setOrder((prev) => prev ? { ...prev, status: res.status } : prev);
+      const fresh = await apiGetAdminOrderDetail(accessToken, order.id);
+      setOrder(fresh);
       setRejectReason('');
     } catch (e) {
       setRefundError((e as ApiError).message ?? '환불 처리에 실패했습니다.');
@@ -111,6 +118,25 @@ export function AdminOrderDetail() {
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>로딩 중...</div>;
   if (error) return <div style={{ padding: '40px', textAlign: 'center', color: '#c62828' }}>{error}</div>;
   if (!order) return null;
+  if (isCancelled) {
+    return (
+      <div style={{ padding: '24px', maxWidth: '900px', margin: '0 auto' }}>
+        <button
+          onClick={() => navigate('/admin/orders')}
+          style={{ marginBottom: '24px', padding: '8px 12px', border: '1px solid #ccc', borderRadius: '4px', background: 'white', cursor: 'pointer', fontSize: '12px' }}
+        >
+          목록으로
+        </button>
+
+        <div style={{ border: '1px solid #eee', borderRadius: '4px', padding: '24px', background: '#fafafa', color: '#666' }}>
+          <h1 style={{ fontSize: '22px', fontWeight: 'bold', marginBottom: '8px', color: '#111' }}>{order.orderNumber}</h1>
+          <p style={{ fontSize: '14px', lineHeight: '1.6' }}>
+            취소된 주문은 상세 정보를 표시하지 않습니다.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '24px', maxWidth: '900px', margin: '0 auto' }}>
@@ -154,6 +180,14 @@ export function AdminOrderDetail() {
         </section>
       </div>
 
+      {/* 관리자 메모 */}
+      <section style={{ border: '1px solid #eee', borderRadius: '4px', padding: '16px', marginBottom: '24px', background: '#fafafa' }}>
+        <h3 style={{ fontWeight: '600', marginBottom: '8px', fontSize: '14px' }}>관리자 메모</h3>
+        <div style={{ fontSize: '13px', color: order.memo ? '#333' : '#999', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+          {order.memo || '저장된 메모가 없습니다.'}
+        </div>
+      </section>
+
       {/* 주문 상품 */}
       <section style={{ border: '1px solid #eee', borderRadius: '4px', padding: '16px', marginBottom: '24px' }}>
         <h3 style={{ fontWeight: '600', marginBottom: '12px', fontSize: '14px' }}>주문 상품</h3>
@@ -166,7 +200,11 @@ export function AdminOrderDetail() {
         <div style={{ marginTop: '12px', fontSize: '13px', color: '#555', lineHeight: '1.8' }}>
           <div>상품금액: ₩{order.payment.productAmount.toLocaleString()}</div>
           <div>배송비: ₩{order.payment.shippingFee.toLocaleString()}</div>
-          {order.payment.usedCoupon && <div>쿠폰: {order.payment.usedCoupon} (-₩{order.payment.discountAmount.toLocaleString()})</div>}
+          {order.payment.usedCoupon && (
+            <div>
+              쿠폰: {formatUsedCoupon(order.payment.usedCoupon)} (-₩{order.payment.discountAmount.toLocaleString()})
+            </div>
+          )}
           <div style={{ fontWeight: '600', marginTop: '4px' }}>최종금액: ₩{order.payment.finalAmount.toLocaleString()}</div>
         </div>
       </section>
@@ -228,35 +266,53 @@ export function AdminOrderDetail() {
       </section>
       )}
 
-      {/* 환불 처리 (REFUND_REQUESTED 상태일 때만) */}
-      {order.status === 'REFUND_REQUESTED' && (
+      {/* 환불 처리 */}
+      {(isRefundRequested || isRefundCompleted) && (
         <section style={{ border: '1px solid #fbbf24', borderRadius: '4px', padding: '16px', background: '#fffbf0' }}>
           <h3 style={{ fontWeight: '600', marginBottom: '12px', fontSize: '14px', color: '#92400e' }}>환불 처리</h3>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', marginBottom: '8px' }}>
-            <input
-              placeholder="거절 시 사유 입력"
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              style={{ flex: 1, padding: '8px 12px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '14px' }}
-            />
-            <button
-              onClick={() => handleRefund(false)}
-              disabled={refundUpdating}
-              style={{ padding: '8px 16px', border: '1px solid #ccc', borderRadius: '4px', background: 'white', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}
-            >
-              거절
-            </button>
-            <button
-              onClick={() => handleRefund(true)}
-              disabled={refundUpdating}
-              style={{ padding: '8px 16px', border: 'none', borderRadius: '4px', background: '#c62828', color: 'white', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}
-            >
-              {refundUpdating ? '처리 중...' : '환불 승인'}
-            </button>
-          </div>
-          {refundError && <p style={{ color: '#c62828', fontSize: '13px' }}>{refundError}</p>}
+          {isRefundRequested ? (
+            <>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', marginBottom: '8px' }}>
+                <input
+                  placeholder="거절 시 사유 입력"
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  style={{ flex: 1, padding: '8px 12px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '14px' }}
+                />
+                <button
+                  onClick={() => handleRefund(false)}
+                  disabled={refundUpdating}
+                  style={{ padding: '8px 16px', border: '1px solid #ccc', borderRadius: '4px', background: 'white', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}
+                >
+                  거절
+                </button>
+                <button
+                  onClick={() => handleRefund(true)}
+                  disabled={refundUpdating}
+                  style={{ padding: '8px 16px', border: 'none', borderRadius: '4px', background: '#c62828', color: 'white', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}
+                >
+                  {refundUpdating ? '처리 중...' : '환불 승인'}
+                </button>
+              </div>
+              {refundError && <p style={{ color: '#c62828', fontSize: '13px' }}>{refundError}</p>}
+            </>
+          ) : (
+            <div style={{ fontSize: '13px', color: '#666', lineHeight: '1.7' }}>
+              <div>환불이 완료된 주문입니다.</div>
+              <div>승인/거절 처리는 더 이상 할 수 없습니다.</div>
+            </div>
+          )}
         </section>
       )}
     </div>
   );
+}
+
+function formatUsedCoupon(value: unknown) {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') {
+    const coupon = value as { couponName?: string; name?: string; userCouponId?: number };
+    return coupon.couponName ?? coupon.name ?? `쿠폰 #${coupon.userCouponId ?? '-'}`;
+  }
+  return String(value ?? '');
 }

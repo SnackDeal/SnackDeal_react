@@ -1,5 +1,5 @@
-import { Placeholder } from '@/components/common/Placeholder';
+import { AdminProductForm } from './AdminProductForm';
 
 export function AdminProductNew() {
-  return <Placeholder title="상품 등록" path="/admin/products/new" />;
+  return <AdminProductForm mode="create" />;
 }

@@ -7,6 +7,7 @@ interface BirthDateSelectProps {
   onChange: (value: string) => void;
   disabled?: boolean;
   className?: string;
+  selectClassName?: string;
 }
 
 function pad2(value: string) {
@@ -23,7 +24,7 @@ function splitBirth(value: string) {
   return { year, month, day };
 }
 
-export function BirthDateSelect({ value, onChange, disabled, className }: BirthDateSelectProps) {
+export function BirthDateSelect({ value, onChange, disabled, className, selectClassName }: BirthDateSelectProps) {
   const parsed = splitBirth(value);
   const [year, setYear] = useState(parsed.year);
   const [month, setMonth] = useState(parsed.month);
@@ -39,7 +40,7 @@ export function BirthDateSelect({ value, onChange, disabled, className }: BirthD
   const yearOptions = useMemo(() => {
     const currentYear = new Date().getFullYear();
     return [
-      { value: '', label: '년도' },
+      { value: '', label: '연도' },
       ...Array.from({ length: currentYear - 1899 }, (_, index) => {
         const yearValue = String(currentYear - index);
         return { value: yearValue, label: `${yearValue}년` };
@@ -100,27 +101,30 @@ export function BirthDateSelect({ value, onChange, disabled, className }: BirthD
       <div className="grid grid-cols-[1.25fr_1fr_1fr] gap-2">
         <Select
           id="birthYear"
-          aria-label="생년"
+          aria-label="연도"
           value={year}
           onChange={(e) => handleYearChange(e.target.value)}
           options={yearOptions}
           disabled={disabled}
+          className={selectClassName}
         />
         <Select
           id="birthMonth"
-          aria-label="생월"
+          aria-label="월"
           value={month}
           onChange={(e) => handleMonthChange(e.target.value)}
           options={monthOptions}
           disabled={disabled}
+          className={selectClassName}
         />
         <Select
           id="birthDay"
-          aria-label="생일"
+          aria-label="일"
           value={day}
           onChange={(e) => handleDayChange(e.target.value)}
           options={dayOptions}
           disabled={disabled}
+          className={selectClassName}
         />
       </div>
     </div>
